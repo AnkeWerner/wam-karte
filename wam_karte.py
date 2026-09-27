@@ -26,8 +26,8 @@ events = []
 # Suche nach allen Tabellen auf der Seite
 tables = soup.find_all("table")
 
-# Erweitertes Datumsmuster für Zeitspannen wie "25.-26.7.26" oder "25./26.10.2025"
-date_pattern = r"\b\d{1,2}\s*[\.\/\-–—]\s*(?:\d{1,2}\s*[\.\/\-–—]\s*)?\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4})\b|\b\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4})\b"
+# Präzises Datumsmuster: Erfasst zweitägige Zeitspannen (z.B. 25.-26.7.26 oder 25./26.10.2025) vor Eintangsterminen
+date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
 
 # Wörter, die aus dem Ortsnamen herausgefiltert werden
 noise_words = [
@@ -150,7 +150,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v10")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v11")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
