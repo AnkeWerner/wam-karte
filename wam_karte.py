@@ -59,13 +59,13 @@ location_mapping = {
     "karlsruher": "Karlsruhe"
 }
 
-def is_cell_ignored(text, is_andere_form=False):
+def is_cell_ignored(text):
     clean = text.strip().lower()
     if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
         return True
     
-    # Neu: Wenn es die Spalte "andere Turnierform" ist und der Text auf "online" endet -> ignorieren
-    if is_andere_form and clean.endswith("online"):
+    # Prüft, ob der Zellinhalt mit 'online' endet
+    if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
         
     return False
@@ -91,33 +91,31 @@ for table in tables:
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
 
-        # Untersuche Turnier-Spalten (WJPT, WAM, SSGT, andere)
+        # Untersuche Turnier-Spalten
         turnier_infos = []
         links = []
         
-        # Spalten-Inhalte durchgehen (ab Index 1, da Index 0 das Datum/Wochentag ist)
+        # Spalten durchgehen (ab Index 1, da 0 das Datum/Tag ist)
         turnier_cells = working_cells[1:]
-        num_turnier_cells = len(turnier_cells)
         
-        for idx, cell in enumerate(turnier_cells):
+        for cell in turnier_cells:
             cell_text = cell.get_text(separator=" ", strip=True)
             
-            # Annahme: Die Spalte "andere Turnierform" ist typischerweise die vierte Turnierspalte (Index 3)
-            # bzw. die vorletzte Arbeitsspalte vor dem Ort.
-            is_andere_form = (idx == 3 or (num_turnier_cells >= 4 and idx == num_turnier_cells - 2))
-            
-            if not is_cell_ignored(cell_text, is_andere_form=is_andere_form):
-                # Sammle Text
-                turnier_infos.append(cell_text)
+            if not is_cell_ignored(cell_text):
+                # Falls sich innerhalb einer Zelle noch ein '- ... online' befindet, abschneiden
+                clean_cell_text = re.sub(r"[\-–—].*online.*$", "", cell_text, flags=re.IGNORECASE).strip()
                 
-                # Sammle evtl. Links
-                for a in cell.find_all("a", href=True):
-                    href = a["href"]
-                    full_link = urllib.parse.urljoin(BASE_URL, href)
-                    link_title = a.get_text(strip=True) or "Ausschreibung / Link"
-                    links.append({"title": link_title, "url": full_link})
+                if clean_cell_text and not is_cell_ignored(clean_cell_text):
+                    turnier_infos.append(clean_cell_text)
+                    
+                    # Links sammeln
+                    for a in cell.find_all("a", href=True):
+                        href = a["href"]
+                        full_link = urllib.parse.urljoin(BASE_URL, href)
+                        link_title = a.get_text(strip=True) or "Ausschreibung / Link"
+                        links.append({"title": link_title, "url": full_link})
 
-        # WENN in allen Turnierspalten nur Ignoriertes steht -> Zeile überspringen
+        # Wenn alle Turnierspalten ignoriert wurden -> Zeile überspringen
         if not turnier_infos:
             continue
 
@@ -142,7 +140,9 @@ for table in tables:
                 clean_location = target_city
                 break
 
-        turnier_typ = ", ".join(dict.fromkeys(turnier_infos))
+        # Mehrfacheinträge filtern
+        unique_infos = list(dict.fromkeys(turnier_infos))
+        turnier_typ = ", ".join(unique_infos)
 
         if len(clean_location) >= 3 and not any(e["date"] == date_str and e["location"] == clean_location for e in events):
             events.append({
@@ -156,7 +156,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v7")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v8")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -170,7 +170,6 @@ for event in events:
         location_data = geocode(f"{event['location']}, Germany")
 
     if location_data:
-        # Erstelle HTML für Links
         links_html = ""
         if event["links"]:
             links_html = "<div style='margin-top: 8px; border-top: 1px solid #ccc; padding-top: 5px;'>"
