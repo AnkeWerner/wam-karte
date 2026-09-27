@@ -20,76 +20,101 @@ response.raise_for_status()
 soup = BeautifulSoup(response.text, "html.parser")
 
 events = []
-
-# Suche in allen Tabellenzeilen (tr) und Absätzen (p/div)
 candidate_elements = soup.find_all(["tr", "p", "li", "div"])
 
-# Muster für Datum (z. B. 25.10.2025, 25./26.10.2025, 05.10.25)
 date_pattern = r"\b\d{1,2}\.(?:\/\d{1,2}\.)?\d{1,2}\.(?:\d{2}|\d{4})\b"
+
+# Liste von Wörtern, die nicht zum Ortsnamen gehören
+noise_words = [
+    "ok", "jgt", "ssgt", "kjpt", "bjpt", "bam", "wam", "wjpt", "mfc", "u12",
+    "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "schach", "verein",
+    "sc", "sf", "sv", "vfl", "cup", "biber", "stand", "vom", "der", "u.", "und",
+    "in", "a.d.f.", "a.n.", "a.d.m."
+]
 
 for el in candidate_elements:
     text = el.get_text(separator=" ", strip=True)
     
-    # Suche nach Datum im Text
     date_match = re.search(date_pattern, text)
     if date_match:
         date_str = date_match.group(0)
         
-        # Restlichen Text als Ort/Bezeichnung aufbereiten
+        # Ausschluss von "Stand vom ..."
+        if "stand vom" in text.lower():
+            continue
+
+        # Text bereinigen
         clean_text = text.replace(date_str, "").strip()
-        
-        # Typische Füllwörter und Tage entfernen
         clean_text = re.sub(r"\b(Sa|So|Mo|Di|Mi|Do|Fr|Sa\/So|So\/Sa)\b", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\d+\.", "", clean_text)  # Entfernt Ordinalzahlen wie "25."
         clean_text = re.sub(r"[,\-\/:]", " ", clean_text)
-        
-        # WAM / WJPT Nummerierungen bereinigen
-        words = clean_text.split()
-        filtered_words = [w for w in words if w.lower() not in ["wam", "wjpt", "turnier", "runde", "ausrichter", "und"]]
-        
-        location_candidate = " ".join(filtered_words).strip()
-        
-        # Wenn ein sinnvoller Ort übrig bleibt
-        if 2 < len(location_candidate) < 40 and not any(e["location"] == location_candidate for e in events):
-            events.append({"date": date_str, "location": location_candidate, "full_info": text})
 
-print(f"Gefundene Termine: {len(events)}")
-for e in events:
-    print(f" - {e['date']}: {e['location']}")
+        # Einzelne Wörter filtern für Geocoding
+        raw_words = clean_text.split()
+        city_words = []
+        for w in raw_words:
+            w_lower = w.lower().strip(".")
+            if w_lower not in noise_words and not w_lower.isdigit():
+                city_words.append(w)
 
-# 3. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v2")
+        clean_location = " ".join(city_words).strip()
+
+        # Spezialfälle korrigieren
+        if "neuhausen" in text.lower():
+            clean_location = "Neuhausen auf den Fildern"
+        elif "sillenbuch" in text.lower():
+            clean_location = "Stuttgart Sillenbuch"
+        elif "freiberg" in text.lower():
+            clean_location = "Freiberg am Neckar"
+        elif "sulzbach" in text.lower():
+            clean_location = "Sulzbach an der Murr"
+
+        if len(clean_location) >= 3 and not any(e["date"] == date_str and e["location"] == clean_location for e in events):
+            events.append({
+                "date": date_str,
+                "location": clean_location,
+                "full_info": text
+            })
+
+print(f"Gefundene & bereinigte Termine: {len(events)}")
+
+# 2. Geocoding & Karte initialisieren
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v3")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
 markers_added = 0
 for event in events:
-    # Ortssuche für Baden-Württemberg eingrenzen
     search_query = f"{event['location']}, Baden-Württemberg, Germany"
     location_data = geocode(search_query)
 
     if not location_data:
+        # Fallback-Suche ohne Bundesland
         location_data = geocode(f"{event['location']}, Germany")
 
     if location_data:
         popup_html = f"""
-        <div style='font-family: sans-serif; font-size: 14px;'>
-            <h4 style='margin-bottom: 5px; color: #1a5f7a;'>WAM / WJPT Turnier</h4>
+        <div style='font-family: sans-serif; font-size: 13px;'>
+            <h4 style='margin: 0 0 5px 0; color: #1a5f7a;'>WAM / WJPT Turnier</h4>
             <b>Datum:</b> {event['date']}<br>
-            <b>Ort:</b> {event['location']}<br>
-            <small style='color: #666;'>{event['full_info']}</small>
+            <b>Ort:</b> {event['location']}<br><br>
+            <small style='color: #555;'>{event['full_info']}</small>
         </div>
         """
         folium.Marker(
             location=[location_data.latitude, location_data.longitude],
-            popup=folium.Popup(popup_html, max_width=300),
+            popup=folium.Popup(popup_html, max_width=280),
             tooltip=f"{event['date']} - {event['location']}",
             icon=folium.Icon(color="red", icon="info-sign"),
         ).add_to(wam_map)
         markers_added += 1
+        print(f"✔ Marker gesetzt: {event['date']} in {event['location']}")
+    else:
+        print(f"❌ Ort nicht gefunden: '{event['location']}'")
 
-print(f"Erfolgreich auf der Karte gesetzte Marker: {markers_added}")
+print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
-# 4. Als index.html speichern
+# 3. als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
