@@ -64,7 +64,6 @@ def is_cell_ignored(text):
     if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
         return True
     
-    # Prüft, ob der Zellinhalt mit 'online' endet
     if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
         
@@ -95,27 +94,23 @@ for table in tables:
         turnier_infos = []
         links = []
         
-        # Spalten durchgehen (ab Index 1, da 0 das Datum/Tag ist)
         turnier_cells = working_cells[1:]
         
         for cell in turnier_cells:
             cell_text = cell.get_text(separator=" ", strip=True)
             
             if not is_cell_ignored(cell_text):
-                # Falls sich innerhalb einer Zelle noch ein '- ... online' befindet, abschneiden
                 clean_cell_text = re.sub(r"[\-–—].*online.*$", "", cell_text, flags=re.IGNORECASE).strip()
                 
                 if clean_cell_text and not is_cell_ignored(clean_cell_text):
                     turnier_infos.append(clean_cell_text)
                     
-                    # Links sammeln
                     for a in cell.find_all("a", href=True):
                         href = a["href"]
                         full_link = urllib.parse.urljoin(BASE_URL, href)
                         link_title = a.get_text(strip=True) or "Ausschreibung / Link"
                         links.append({"title": link_title, "url": full_link})
 
-        # Wenn alle Turnierspalten ignoriert wurden -> Zeile überspringen
         if not turnier_infos:
             continue
 
@@ -140,7 +135,6 @@ for table in tables:
                 clean_location = target_city
                 break
 
-        # Mehrfacheinträge filtern
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
 
@@ -149,14 +143,13 @@ for table in tables:
                 "date": date_str,
                 "location": clean_location,
                 "type": turnier_typ,
-                "links": links,
-                "full_info": row_text
+                "links": links
             })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v8")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v9")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -183,12 +176,11 @@ for event in events:
             <b>Datum:</b> {event['date']}<br>
             <b>Ort:</b> {event['location']}<br>
             {links_html}
-            <br><small style='color: #666;'>{event['full_info']}</small>
         </div>
         """
         folium.Marker(
             location=[location_data.latitude, location_data.longitude],
-            popup=folium.Popup(popup_html, max_width=300),
+            popup=folium.Popup(popup_html, max_width=280),
             tooltip=f"{event['date']} - {event['location']} ({event['type']})",
             icon=folium.Icon(color="red", icon="info-sign"),
         ).add_to(wam_map)
