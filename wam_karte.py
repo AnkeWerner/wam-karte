@@ -216,61 +216,7 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-stett": "Althengstett",
-    "welzheim": "Welzheim",
-    "leipheim": "Leipheim",
-    "magstadt": "Magstadt",
-    "böblingen": "Böblingen",
-    "filderstadt": "Filderstadt",
-    "heumaden": "Stuttgart Heumaden",
-    "niefern": "Niefern-Öschelbronn",
-    "öschelbronn": "Niefern-Öschelbronn",
-    "sillenbuch": "Stuttgart Sillenbuch",
-    "neuhausen": "Neuhausen auf den Fildern",
-    "freiberg": "Freiberg am Neckar",
-    "sulzbach": "Sulzbach an der Murr",
-    "karlsruher": "Karlsruhe"
-}
-
-def is_cell_ignored(text):
-    clean = text.strip().lower()
-    if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
-        return True
-    
-    if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
-        return True
-        
-    return False
-
-for table in tables:
-    rows = table.find_all("tr")
-    for row in rows:
-        cells = row.find_all(["td", "th"])
-        if len(cells) < 3:
-            continue
-        
-        working_cells = cells[:-1]
-        row_text = " ".join([c.get_text(strip=True) for c in working_cells])
-        
-        if "ausgefallen" in row_text.lower():
-            continue
-
-        date_match = re.search(date_pattern, row_text)
-        if not date_match:
-            continue
-            
-        date_str = date_match.group(0).strip()
-        
-        if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
-            continue
-
-        # Ortsextraktion aus der gesamten Zeile
-        clean_text = row_text.replace(date_str, "").strip()
-        clean_text = re.sub(r"\b(Sa|So|Mo|Di|Mi|Do|Fr|Sa\/So|So\/Sa)\b", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\d+\.", "", clean_text)
-        clean_text = re.sub(r"[,\-\/:\+\(\)]", " ", clean_text)
-
-        raw_words = clean_text.split()
+lean_text.split()
         city_words = []
         for w in raw_words:
             w_clean = w.lower().strip(".")
