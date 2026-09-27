@@ -1,0 +1,44 @@
+name: WAM Karte aktualisieren
+
+on:
+  schedule:
+    # Läuft jeden Montag um 04:00 Uhr nachts automatisch
+    - cron: '0 4 * * 1'
+  workflow_dispatch: # Erlaubt das manuelle Starten per Button
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Bibliotheken installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 geopy folium
+
+      - name: Skript ausführen & index.html erzeugen
+        run: python wam_karte.py
+
+      - name: GitHub Pages einrichten
+        uses: actions/configure-pages@v5
+
+      - name: Artifact hochladen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Auf GitHub Pages veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4
