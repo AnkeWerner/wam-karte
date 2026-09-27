@@ -31,11 +31,12 @@ noise_words = [
     "sc", "sf", "sv", "vfl", "cup", "biber", "stand", "vom", "der", "u.", "und", "mit", "oder", "für",
     "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur", "bjem", "stgt",
     "mädchen", "schnellschach", "mädchentag", "frühlingsturnier", "familien", "meisterschaft", "off", "offene",
-    "stuttgarter", "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind"
+    "stuttgarter", "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer"
 ]
 
 # Manuelles Mapping für knifflige Vereins- oder Doppelnamen
 location_mapping = {
+    "rommelshausen": "Kernen im Remstal",
     "jedesheim": "Jedesheim Illertissen",
     "renningen": "Renningen",
     "ottenbronn": "Althengstett Ottenbronn",
@@ -99,7 +100,7 @@ for el in candidate_elements:
 print(f"Gefundene & bereinigte Termine: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v4")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v5")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
