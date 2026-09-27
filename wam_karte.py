@@ -144,12 +144,12 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v15")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v18")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Ebenen mit automatischer Auffächerung (Spiderfy) bei gleichen Koordinaten
+# Ebenen mit automatischer Auffächerung
 group_wam = MarkerCluster(name="WAM Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_wjpt = MarkerCluster(name="WJPT Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_ssgt = MarkerCluster(name="SSGT Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
@@ -191,7 +191,8 @@ for event in events:
         type_upper = event["type"].upper()
         matched = False
 
-        if "WAM" in type_upper:
+        # WAM & BAM gehören zusammen in den WAM-Filter
+        if "WAM" in type_upper or "BAM" in type_upper:
             make_marker().add_to(group_wam)
             matched = True
 
