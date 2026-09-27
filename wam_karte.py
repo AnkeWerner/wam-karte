@@ -28,7 +28,7 @@ tables = soup.find_all("table")
 
 date_pattern = r"\b\d{1,2}\.(?:\/\d{1,2}\.)?\d{1,2}\.(?:\d{2}|\d{4})\b"
 
-# Woerter, die aus dem Ortsnamen herausgefiltert werden
+# Wörter, die aus dem Ortsnamen herausgefiltert werden
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "schach", "verein", "schachabt", "sabt", "spvgg",
@@ -59,9 +59,16 @@ location_mapping = {
     "karlsruher": "Karlsruhe"
 }
 
-def is_cell_ignored(text):
+def is_cell_ignored(text, is_andere_form=False):
     clean = text.strip().lower()
-    return clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean
+    if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
+        return True
+    
+    # Neu: Wenn es die Spalte "andere Turnierform" ist und der Text auf "online" endet -> ignorieren
+    if is_andere_form and clean.endswith("online"):
+        return True
+        
+    return False
 
 for table in tables:
     rows = table.find_all("tr")
@@ -88,10 +95,18 @@ for table in tables:
         turnier_infos = []
         links = []
         
-        # Suche in den mittleren Spalten nach Turnier-Inhalten und Links
-        for cell in working_cells[1:]:
+        # Spalten-Inhalte durchgehen (ab Index 1, da Index 0 das Datum/Wochentag ist)
+        turnier_cells = working_cells[1:]
+        num_turnier_cells = len(turnier_cells)
+        
+        for idx, cell in enumerate(turnier_cells):
             cell_text = cell.get_text(separator=" ", strip=True)
-            if not is_cell_ignored(cell_text):
+            
+            # Annahme: Die Spalte "andere Turnierform" ist typischerweise die vierte Turnierspalte (Index 3)
+            # bzw. die vorletzte Arbeitsspalte vor dem Ort.
+            is_andere_form = (idx == 3 or (num_turnier_cells >= 4 and idx == num_turnier_cells - 2))
+            
+            if not is_cell_ignored(cell_text, is_andere_form=is_andere_form):
                 # Sammle Text
                 turnier_infos.append(cell_text)
                 
@@ -102,7 +117,7 @@ for table in tables:
                     link_title = a.get_text(strip=True) or "Ausschreibung / Link"
                     links.append({"title": link_title, "url": full_link})
 
-        # WENN in allen Turnierspalten nur ignoriertes steht -> Zeile überspringen
+        # WENN in allen Turnierspalten nur Ignoriertes steht -> Zeile überspringen
         if not turnier_infos:
             continue
 
@@ -141,7 +156,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v6")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v7")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -155,7 +170,7 @@ for event in events:
         location_data = geocode(f"{event['location']}, Germany")
 
     if location_data:
-        # Erstelle HTML fuer Links
+        # Erstelle HTML für Links
         links_html = ""
         if event["links"]:
             links_html = "<div style='margin-top: 8px; border-top: 1px solid #ccc; padding-top: 5px;'>"
