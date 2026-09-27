@@ -22,14 +22,10 @@ response.raise_for_status()
 soup = BeautifulSoup(response.text, "html.parser")
 
 events = []
-
-# Suche nach allen Tabellen auf der Seite
 tables = soup.find_all("table")
 
-# Präzises Datumsmuster: Erfasst zweitägige Zeitspannen (z.B. 25.-26.7.26 oder 25./26.10.2025) vor Eintangsterminen
 date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
 
-# Wörter, die aus dem Ortsnamen herausgefiltert werden
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "schach", "verein", "schachabt", "sabt", "spvgg",
@@ -77,9 +73,7 @@ for table in tables:
         if len(cells) < 3:
             continue
         
-        # Ignoriere die letzte Spalte ("erl.")
         working_cells = cells[:-1]
-        
         row_text = " ".join([c.get_text(strip=True) for c in working_cells])
         date_match = re.search(date_pattern, row_text)
         
@@ -91,10 +85,8 @@ for table in tables:
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
 
-        # Untersuche Turnier-Spalten
         turnier_infos = []
         links = []
-        
         turnier_cells = working_cells[1:]
         
         for cell in turnier_cells:
@@ -115,7 +107,6 @@ for table in tables:
         if not turnier_infos:
             continue
 
-        # Ortsextraktion aus der Zeile
         clean_text = row_text.replace(date_str, "").strip()
         clean_text = re.sub(r"\b(Sa|So|Mo|Di|Mi|Do|Fr|Sa\/So|So\/Sa)\b", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\d+\.", "", clean_text)
@@ -150,10 +141,16 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v11")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v12")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
+
+# Filter-Gruppen (Layers) anlegen
+group_wam = folium.FeatureGroup(name="WAM Turniere").add_to(wam_map)
+group_wjpt = folium.FeatureGroup(name="WJPT Turniere").add_to(wam_map)
+group_ssgt = folium.FeatureGroup(name="SSGT Turniere").add_to(wam_map)
+group_andere = folium.FeatureGroup(name="Andere Turnierformen").add_to(wam_map)
 
 markers_added = 0
 for event in events:
@@ -179,14 +176,55 @@ for event in events:
             {links_html}
         </div>
         """
-        folium.Marker(
-            location=[location_data.latitude, location_data.longitude],
-            popup=folium.Popup(popup_html, max_width=280),
-            tooltip=f"{event['date']} - {event['location']} ({event['type']})",
-            icon=folium.Icon(color="red", icon="info-sign"),
-        ).add_to(wam_map)
+
+        # Einsortierung in die passenden Filter-Gruppen
+        type_upper = event["type"].upper()
+        matched = False
+
+        if "WAM" in type_upper:
+            marker = folium.Marker(
+                location=[location_data.latitude, location_data.longitude],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{event['date']} - {event['location']} ({event['type']})",
+                icon=folium.Icon(color="red", icon="info-sign"),
+            )
+            marker.add_to(group_wam)
+            matched = True
+
+        if "WJPT" in type_upper or "JGT" in type_upper or "KJPT" in type_upper or "BJPT" in type_upper:
+            marker = folium.Marker(
+                location=[location_data.latitude, location_data.longitude],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{event['date']} - {event['location']} ({event['type']})",
+                icon=folium.Icon(color="blue", icon="info-sign"),
+            )
+            marker.add_to(group_wjpt)
+            matched = True
+
+        if "SSGT" in type_upper:
+            marker = folium.Marker(
+                location=[location_data.latitude, location_data.longitude],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{event['date']} - {event['location']} ({event['type']})",
+                icon=folium.Icon(color="green", icon="info-sign"),
+            )
+            marker.add_to(group_ssgt)
+            matched = True
+
+        if not matched:
+            marker = folium.Marker(
+                location=[location_data.latitude, location_data.longitude],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{event['date']} - {event['location']} ({event['type']})",
+                icon=folium.Icon(color="orange", icon="info-sign"),
+            )
+            marker.add_to(group_andere)
+
         markers_added += 1
         print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
+
+# Filter-Steuerung oben rechts auf der Karte einbauen
+folium.LayerControl(collapsed=False).add_to(wam_map)
 
 print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
