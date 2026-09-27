@@ -5,6 +5,7 @@ import urllib3
 import requests
 from bs4 import BeautifulSoup
 import folium
+from folium.plugins import MarkerCluster
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 
@@ -133,27 +134,26 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
 
-        if len(clean_location) >= 3 and not any(e["date"] == date_str and e["location"] == clean_location for e in events):
-            events.append({
-                "date": date_str,
-                "location": clean_location,
-                "type": turnier_typ,
-                "links": links
-            })
+        events.append({
+            "date": date_str,
+            "location": clean_location,
+            "type": turnier_typ,
+            "links": links
+        })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v14")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v15")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Filter-Gruppen
-group_wam = folium.FeatureGroup(name="WAM Turniere").add_to(wam_map)
-group_wjpt = folium.FeatureGroup(name="WJPT Turniere").add_to(wam_map)
-group_ssgt = folium.FeatureGroup(name="SSGT Turniere").add_to(wam_map)
-group_andere = folium.FeatureGroup(name="Andere Turnierformen").add_to(wam_map)
+# Ebenen mit automatischer Auffächerung (Spiderfy) bei gleichen Koordinaten
+group_wam = MarkerCluster(name="WAM Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
+group_wjpt = MarkerCluster(name="WJPT Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
+group_ssgt = MarkerCluster(name="SSGT Turniere", spiderfyOnMaxZoom=True).add_to(wam_map)
+group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
 
 markers_added = 0
 for event in events:
@@ -180,7 +180,6 @@ for event in events:
         </div>
         """
 
-        # Erstellung eines orangen Markers mit Font-Awesome Schach-Icon
         def make_marker():
             return folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
