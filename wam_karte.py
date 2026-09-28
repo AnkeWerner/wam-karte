@@ -5,7 +5,7 @@ import urllib3
 import requests
 from bs4 import BeautifulSoup
 import folium
-from folium.plugins import MarkerCluster
+from folium.plugins import MarkerCluster, Search
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 
@@ -144,13 +144,14 @@ for table in tables:
             "date": date_str,
             "location": clean_location,
             "type": turnier_typ,
-            "links": links
+            "links": links,
+            "raw_text": row_text
         })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v24")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v25")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -161,6 +162,9 @@ group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_frauen = MarkerCluster(name="Mädchen- & Frauenturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
+
+# FeatureGroup für das Such-Plugin
+search_group = folium.FeatureGroup(name="Such-Ebene", show=False).add_to(wam_map)
 
 markers_added = 0
 for event in events:
@@ -187,6 +191,9 @@ for event in events:
         </div>
         """
 
+        # Titel für die Suchleiste zusammenbauen (Ort, Datum & Typ)
+        search_title = f"{event['location']} ({event['date']} - {event['type']})"
+
         def make_marker():
             return folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
@@ -195,30 +202,35 @@ for event in events:
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
 
+        # Marker für Suchfunktion als GeoJson/Marker registrieren
+        search_marker = folium.Marker(
+            location=[location_data.latitude, location_data.longitude],
+            popup=folium.Popup(popup_html, max_width=280),
+            tooltip=search_title,
+            title=search_title,
+            icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
+        )
+        search_marker.add_to(search_group)
+
         type_upper = event["type"].upper()
         standard_matched = False
 
-        # 1. Prüfe Amateurturniere (WAM / BAM)
         if "WAM" in type_upper or "BAM" in type_upper:
             make_marker().add_to(group_wam)
             standard_matched = True
 
-        # 2. Prüfe Jugendturniere (WJPT / JGT / KJPT / BJPT / BJEM / Kinder / Jugendliche)
         if any(kw in type_upper for kw in ["WJPT", "JGT", "KJPT", "BJPT", "BJEM", "KINDER", "JUGENDLICHE", "JUGEND"]):
             make_marker().add_to(group_wjpt)
             standard_matched = True
 
-        # 3. Prüfe Schulschachturniere (SSGT)
         if "SSGT" in type_upper:
             make_marker().add_to(group_ssgt)
             standard_matched = True
 
-        # 4. Prüfe Mädchen- & Frauenturniere
         if any(kw in type_upper for kw in ["MÄDCHEN", "FRAUEN", "MAEDCHEN", "MÄDCHENTAG"]):
             make_marker().add_to(group_frauen)
             standard_matched = True
 
-        # 5. Prüfe Andere Turnierformen
         andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
         is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
@@ -229,6 +241,16 @@ for event in events:
         print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
     else:
         print(f"❌ Ort nicht gefunden: '{event['location']}'")
+
+# Suchleiste oben links zur Karte hinzufügen
+Search(
+    layer=search_group,
+    geom_type="Point",
+    placeholder="🔎 Ort, Datum oder Turnier suchen...",
+    collapsed=False,
+    search_label="title",
+    weight=3
+).add_to(wam_map)
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
