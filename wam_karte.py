@@ -151,7 +151,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v25")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v26")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -191,7 +191,6 @@ for event in events:
         </div>
         """
 
-        # Titel für die Suchleiste zusammenbauen (Ort, Datum & Typ)
         search_title = f"{event['location']} ({event['date']} - {event['type']})"
 
         def make_marker():
@@ -202,7 +201,6 @@ for event in events:
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
 
-        # Marker für Suchfunktion als GeoJson/Marker registrieren
         search_marker = folium.Marker(
             location=[location_data.latitude, location_data.longitude],
             popup=folium.Popup(popup_html, max_width=280),
@@ -258,4 +256,56 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
 # 3. als index.html speichern
 wam_map.save("index.html")
-print("index.html erfolgreich erzeugt!")
+
+# 4. JavaScript für "Alle auswählen / Alle abwählen" in index.html einfügen
+custom_js = """
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        var controlContainer = document.querySelector('.leaflet-control-layers-overlays');
+        if (controlContainer) {
+            var btnContainer = document.createElement('div');
+            btnContainer.style.marginBottom = '8px';
+            btnContainer.style.paddingBottom = '5px';
+            btnContainer.style.borderBottom = '1px solid #ccc';
+
+            btnContainer.innerHTML = `
+                <button id="select-all-btn" style="cursor:pointer; font-size:11px; padding:3px 6px; margin-right:4px; border:1px solid #0066cc; background:#0066cc; color:white; border-radius:3px;">Alle an</button>
+                <button id="deselect-all-btn" style="cursor:pointer; font-size:11px; padding:3px 6px; border:1px solid #666; background:#f0f0f0; color:#333; border-radius:3px;">Alle aus</button>
+            `;
+
+            controlContainer.parentNode.insertBefore(btnContainer, controlContainer);
+
+            document.getElementById('select-all-btn').addEventListener('click', function() {
+                var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(function(cb) {
+                    if (!cb.checked) {
+                        cb.click();
+                    }
+                });
+            });
+
+            document.getElementById('deselect-all-btn').addEventListener('click', function() {
+                var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(function(cb) {
+                    if (cb.checked) {
+                        cb.click();
+                    }
+                });
+            });
+        }
+    }, 500);
+});
+</script>
+</body>
+"""
+
+with open("index.html", "r", encoding="utf-8") as f:
+    content = f.read()
+
+content = content.replace("</body>", custom_js)
+
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("index.html erfolgreich erweitert und gespeichert!")
