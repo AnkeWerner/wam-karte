@@ -149,12 +149,12 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v33")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v35")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Standort-Button hinzufügen (Button links unter Zoom +/-)
+# Standort-Button hinzufügen
 LocateControl(
     auto_start=False,
     flyTo=True,
@@ -240,7 +240,55 @@ folium.LayerControl(collapsed=False).add_to(wam_map)
 
 map_var_name = wam_map.get_name()
 
-# UI-Anpassung inkl. Quellangabe
+# -------------------------------------------------------------
+# Dynamische SVG-Grafiken für Favicon und Link-Vorschau erzeugen
+# -------------------------------------------------------------
+
+# 1. Favicon (Schachturm SVG)
+favicon_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="20" fill="#1a5f7a"/>
+  <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
+</svg>""")
+favicon_data_url = f"data:image/svg+xml,{favicon_svg}"
+
+# 2. Open Graph Vorschau-Banner SVG (1200x630px Standard-Format)
+preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#1a5f7a"/>
+  <!-- Schachbrett-Muster Hintergrund -->
+  <g opacity="0.08" fill="#ffffff">
+    <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
+    <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
+    <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
+    <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
+  </g>
+  <!-- Schachturm-Icon -->
+  <g transform="translate(100, 165) scale(3.5)">
+    <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
+  </g>
+  <!-- Text-Inhalte -->
+  <text x="450" y="260" font-family="Arial, sans-serif" font-weight="bold" font-size="64" fill="#ffffff">Schachturniere</text>
+  <text x="450" y="340" font-family="Arial, sans-serif" font-weight="bold" font-size="52" fill="#f2a900">Baden-Württemberg</text>
+  <text x="450" y="420" font-family="Arial, sans-serif" font-size="32" fill="#e0e0e0">Interaktive Karte &amp; Termine (WAM, WJPT etc.)</text>
+</svg>""")
+preview_data_url = f"data:image/svg+xml,{preview_svg}"
+
+# Meta-Tags & Favicon direkt in den HTML-Head einfügen
+head_meta_html = f"""
+<!-- Website Titel im Tab -->
+<title>Schachturnier-Karte Baden-Württemberg</title>
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="{favicon_data_url}">
+
+<!-- Open Graph / Link-Vorschau (WhatsApp, Social Media etc.) -->
+<meta property="og:title" content="Schachturnier-Karte Baden-Württemberg">
+<meta property="og:description" content="Interaktive Übersicht aller Schachturniere (WAM, WJPT, Jugend- &amp; Amateurturniere) in Baden-Württemberg.">
+<meta property="og:image" content="{preview_data_url}">
+<meta property="og:type" content="website">
+"""
+wam_map.get_root().header.add_child(folium.Element(head_meta_html))
+
+# UI-Anpassung & Skripte
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
