@@ -66,35 +66,42 @@ def is_cell_ignored(text):
     clean = text.strip().lower()
     if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
         return True
-    
     if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
-        
     return False
 
-# PARSING VON HINTEN (RECHTS): Findet das Datum am Ende des Strings
-def build_iso_date_from_right(date_str, current_year, row_text=""):
-    combined = (date_str + " " + row_text).strip()
+# Präzises Datums-Parsing für Datumsbereiche (z. B. "25. / 26.07.2026" oder "27. / 28.09.2025")
+def extract_strict_iso_date(date_str, current_year, row_text=""):
+    full_text = f"{date_str} {row_text}".strip()
     
-    # 1. Versuche volles Datum von hinten zu matchen (z. B. "... 18.10.2025")
-    full_matches = list(re.finditer(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', combined))
-    if full_matches:
-        last_match = full_matches[-1]
-        day, month, year = last_match.groups()
-        if len(year) == 2:
-            year = "20" + year
+    # 1. Vierstellige Jahreszahl erfassen
+    year_match = re.findall(r'\b(202[4-9])\b', full_text)
+    year = year_match[-1] if year_match else current_year
+
+    # 2. Alle Zahlen mit nachfolgendem Punkt erfassen (z. B. "25.", "26.", "07.")
+    dots_found = re.findall(r'(\d{1,2})\.', date_str)
+    
+    if len(dots_found) >= 2:
+        # Standard: Vorletzter Wert ist Tag, letzter Wert ist Monat
+        day = int(dots_found[-2])
+        month = int(dots_found[-1])
+        
+        # Spezialfall für "25. / 26.07." (dots_found = ['25', '26', '07'])
+        if len(dots_found) == 3:
+            day = int(dots_found[1])
+            month = int(dots_found[2])
+            
         try:
-            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
+            return datetime(int(year), month, day).strftime("%Y-%m-%d")
         except ValueError:
             pass
 
-    # 2. Versuche Datum ohne Jahr von hinten zu matchen (z. B. "... 18.10.")
-    short_matches = list(re.finditer(r'(\d{1,2})\.(\d{1,2})\.?', combined))
-    if short_matches:
-        last_match = short_matches[-1]
-        day, month = last_match.groups()
+    # Fallback für einfache Formate (z. B. "07.12.2025")
+    m = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2})', full_text)
+    if m:
+        d, mo, y = m.groups()
         try:
-            return datetime(int(current_year), int(month), int(day)).strftime("%Y-%m-%d")
+            return datetime(int(y), int(mo), int(d)).strftime("%Y-%m-%d")
         except ValueError:
             pass
 
@@ -111,7 +118,6 @@ for table in tables:
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
         
-        # Saisons- / Jahreskontext aus der Tabelle mitnehmen
         years_found = re.findall(r'\b(202[4-9])\b', row_text)
         if years_found:
             current_context_year = years_found[-1]
@@ -175,8 +181,7 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        # ISO-Datum von hinten erzeugen
-        iso_date = build_iso_date_from_right(date_str, current_context_year, row_text)
+        iso_date = extract_strict_iso_date(date_str, current_context_year, row_text)
         
         display_date = date_str
         if not re.search(r'20\d{2}', display_date):
@@ -193,7 +198,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v43")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v47")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -319,7 +324,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung
+# UI-Anpassung inkl. dynamischer JS-Filterung
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -387,19 +392,6 @@ function setAllFilters(selectState) {{
     }});
 }}
 
-// Hilfsfunktion: extrahiert von rechts aus Text ein ISO-Datum
-function parseIsoFromTextRight(text) {{
-    var matches = Array.from(text.matchAll(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/g));
-    if (matches.length > 0) {{
-        var last = matches[matches.length - 1];
-        var d = String(last[1]).padStart(2, '0');
-        var mo = String(last[2]).padStart(2, '0');
-        var y = last[3];
-        return y + '-' + mo + '-' + d;
-    }}
-    return "";
-}}
-
 function filterMapMarkers() {{
     var inputEl = document.getElementById('mapSearchInput');
     var futureCb = document.getElementById('futureOnlyCheckbox');
@@ -426,14 +418,10 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Datumstest
+        // Zukunftsprüfung
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            if (!isoDate) {{
-                isoDate = parseIsoFromTextRight(searchText);
-            }}
-
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
@@ -460,3 +448,4 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
+        
