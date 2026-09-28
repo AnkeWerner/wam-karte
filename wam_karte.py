@@ -5,7 +5,7 @@ import urllib3
 import requests
 from bs4 import BeautifulSoup
 import folium
-from folium.plugins import MarkerCluster, Search
+from folium.plugins import MarkerCluster
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 
@@ -151,7 +151,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v26")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v27")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -162,9 +162,6 @@ group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_frauen = MarkerCluster(name="Mädchen- & Frauenturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
-
-# FeatureGroup für das Such-Plugin
-search_group = folium.FeatureGroup(name="Such-Ebene", show=False).add_to(wam_map)
 
 markers_added = 0
 for event in events:
@@ -191,64 +188,51 @@ for event in events:
         </div>
         """
 
-        search_title = f"{event['location']} ({event['date']} - {event['type']})"
+        search_title = f"{event['location']} {event['date']} {event['type']} {event['raw_text']}".lower()
 
         def make_marker():
-            return folium.Marker(
+            m = folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
                 popup=folium.Popup(popup_html, max_width=280),
                 tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
-
-        search_marker = folium.Marker(
-            location=[location_data.latitude, location_data.longitude],
-            popup=folium.Popup(popup_html, max_width=280),
-            tooltip=search_title,
-            title=search_title,
-            icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
-        )
-        search_marker.add_to(search_group)
+            return m
 
         type_upper = event["type"].upper()
         standard_matched = False
 
         if "WAM" in type_upper or "BAM" in type_upper:
-            make_marker().add_to(group_wam)
+            m = make_marker()
+            m.add_to(group_wam)
             standard_matched = True
 
         if any(kw in type_upper for kw in ["WJPT", "JGT", "KJPT", "BJPT", "BJEM", "KINDER", "JUGENDLICHE", "JUGEND"]):
-            make_marker().add_to(group_wjpt)
+            m = make_marker()
+            m.add_to(group_wjpt)
             standard_matched = True
 
         if "SSGT" in type_upper:
-            make_marker().add_to(group_ssgt)
+            m = make_marker()
+            m.add_to(group_ssgt)
             standard_matched = True
 
         if any(kw in type_upper for kw in ["MÄDCHEN", "FRAUEN", "MAEDCHEN", "MÄDCHENTAG"]):
-            make_marker().add_to(group_frauen)
+            m = make_marker()
+            m.add_to(group_frauen)
             standard_matched = True
 
         andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
         is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
         if is_andere_explicit or not standard_matched:
-            make_marker().add_to(group_andere)
+            m = make_marker()
+            m.add_to(group_andere)
 
         markers_added += 1
         print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
     else:
         print(f"❌ Ort nicht gefunden: '{event['location']}'")
-
-# Suchleiste oben links zur Karte hinzufügen
-Search(
-    layer=search_group,
-    geom_type="Point",
-    placeholder="🔎 Ort, Datum oder Turnier suchen...",
-    collapsed=False,
-    search_label="title",
-    weight=3
-).add_to(wam_map)
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
@@ -257,11 +241,12 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. als index.html speichern
 wam_map.save("index.html")
 
-# 4. JavaScript für "Alle auswählen / Alle abwählen" in index.html einfügen
+# 4. Erweitertes JavaScript: Echtzeit-Filter-Suchleiste + "Alle an / Alle aus" Buttons
 custom_js = """
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     setTimeout(function() {
+        // 1. Buttons "Alle an / Alle aus" in das Layer-Menü einbauen
         var controlContainer = document.querySelector('.leaflet-control-layers-overlays');
         if (controlContainer) {
             var btnContainer = document.createElement('div');
@@ -279,19 +264,57 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('select-all-btn').addEventListener('click', function() {
                 var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
                 checkboxes.forEach(function(cb) {
-                    if (!cb.checked) {
-                        cb.click();
-                    }
+                    if (!cb.checked) { cb.click(); }
                 });
             });
 
             document.getElementById('deselect-all-btn').addEventListener('click', function() {
                 var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
                 checkboxes.forEach(function(cb) {
-                    if (cb.checked) {
-                        cb.click();
-                    }
+                    if (cb.checked) { cb.click(); }
                 });
+            });
+        }
+
+        # 2. Interaktive Live-Suchleiste oben links einbauen
+        var searchControlDiv = document.createElement('div');
+        searchControlDiv.className = 'leaflet-control leaflet-bar';
+        searchControlDiv.style.backgroundColor = 'white';
+        searchControlDiv.style.padding = '6px 8px';
+        searchControlDiv.style.borderRadius = '4px';
+        searchControlDiv.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
+        searchControlDiv.style.marginTop = '10px';
+        searchControlDiv.style.marginLeft = '10px';
+
+        searchControlDiv.innerHTML = `
+            <input type="text" id="custom-map-search" placeholder="🔎 Ort, Datum oder Turnier filtern..." style="width: 220px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; outline: none;">
+        `;
+
+        var topLeftContainer = document.querySelector('.leaflet-top.leaflet-left');
+        if (topLeftContainer) {
+            topLeftContainer.appendChild(searchControlDiv);
+        }
+
+        // Such-Filter Logik
+        var searchInput = document.getElementById('custom-map-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                var query = e.target.value.toLowerCase().strip ? e.target.value.toLowerCase().strip() : e.target.value.toLowerCase().trim();
+                
+                // Durchsuche alle Marker
+                for (var layerId in map._layers) {
+                    var layer = map._layers[layerId];
+                    if (layer instanceof L.Marker) {
+                        var tooltipText = layer.getTooltip() ? layer.getTooltip().getContent().toLowerCase() : "";
+                        var popupText = layer.getPopup() ? layer.getPopup().getContent().toLowerCase() : "";
+                        
+                        if (tooltipText.includes(query) || popupText.includes(query)) {
+                            layer.getElement() && (layer.getElement().style.display = '');
+                        } else {
+                            layer.getElement() && (layer.getElement().style.display = 'none');
+                        }
+                    }
+                }
             });
         }
     }, 500);
