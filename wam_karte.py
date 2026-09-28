@@ -70,28 +70,30 @@ def is_cell_ignored(text):
         return True
     return False
 
-# Direkte Extraktion des ISO-Enddatums (YYYY-MM-DD) aus der Datumszelle mit voller Jahreszahl
-def parse_direct_iso_date(date_str):
-    # Sucht das letzte Vorkommen von Tag, Monat und 4-stelliger Jahreszahl
-    # Beispiele: "18.10.2025" -> Tag 18, Monat 10, Jahr 2025
-    # "03.-05.10.2025" -> Tag 05, Monat 10, Jahr 2025
-    matches = re.findall(r'(\d{1,2})\.(\d{1,2})\.(20\d{2})', date_str)
+def parse_iso_end_date(row_text):
+    # Liest das vollständige Enddatum (Tag, Monat, Jahr) aus der Tabellenzeile
+    # Funktioniert für "18.10.2025", "03.-05.10.2025", "31.10./01.11.2025" etc.
+    matches = re.findall(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
     if matches:
-        d, m, y = matches[-1] # Nimmt immer das Enddatum
+        d, m, y = matches[-1]  # Nimmt immer den letzten gefundenen Tag/Monat (Enddatum)
+        if len(y) == 2:
+            y = "20" + y
         try:
             return datetime(int(y), int(m), int(d)).strftime("%Y-%m-%d")
         except ValueError:
             pass
-            
-    # Falls das Jahr 2-stellig angegeben ist (z. B. 18.10.25)
-    matches_short = re.findall(r'(\d{1,2})\.(\d{1,2})\.(\d{2})', date_str)
+
+    # Fallback für Daten ohne Jahr in der Zeile
+    matches_short = re.findall(r'(\d{1,2})\.(\d{1,2})\.', row_text)
     if matches_short:
-        d, m, y = matches_short[-1]
+        d, m = matches_short[-1]
+        m_int = int(m)
+        y_int = 2025 if m_int >= 9 else 2026
         try:
-            return datetime(int("20" + y), int(m), int(d)).strftime("%Y-%m-%d")
+            return datetime(y_int, m_int, int(d)).strftime("%Y-%m-%d")
         except ValueError:
             pass
-            
+
     return ""
 
 for table in tables:
@@ -107,8 +109,7 @@ for table in tables:
 
         working_cells = cells[:-1] if len(cells) > 3 else cells
         
-        # Datums-Pattern sucht gezielt nach Einträgen mit Jahreszahl
-        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:20\d{2}|\d{2})\b', row_text)
+        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
         if not date_match:
             continue
             
@@ -162,8 +163,7 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        # Exaktes ISO-Datum aus dem Datumseintrag auslesen
-        iso_date = parse_direct_iso_date(date_str)
+        iso_date = parse_iso_end_date(row_text)
 
         events.append({
             "date": date_str,
@@ -176,7 +176,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v45")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v46")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -302,7 +302,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung & exaktes JavaScript
+# UI-Anpassung & verlässliches JavaScript
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -378,7 +378,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Aktuelles Datum als YYYY-MM-DD
+    // Aktuelles Datum im ISO-Format (YYYY-MM-DD)
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -396,11 +396,10 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Datumstest
+        // Zukunftsprüfung
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            // Wenn ein ISO-Datum da ist und vor dem heutigen Tag liegt -> ausblenden
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
