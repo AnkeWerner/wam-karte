@@ -5,7 +5,7 @@ import urllib3
 import requests
 from bs4 import BeautifulSoup
 import folium
-from folium.plugins import MarkerCluster
+from folium.plugins import MarkerCluster, LocateControl
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 
@@ -149,10 +149,18 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v31")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v33")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
+
+# Standort-Button hinzufügen (Button links unter Zoom +/-)
+LocateControl(
+    auto_start=False,
+    flyTo=True,
+    keepCurrentZoomLevel=False,
+    strings={"title": "Mein Standort"}
+).add_to(wam_map)
 
 # Ebenen anlegen
 group_wam = MarkerCluster(name="Amateurturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
@@ -193,7 +201,6 @@ for event in events:
                 tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
-            # Metadaten für die Textsuche anheften
             m.options['search_text'] = f"{event['location']} {event['date']} {event['type']}".lower()
             return m
 
@@ -231,10 +238,9 @@ for event in events:
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
-# Exakten internen JS-Variablennamen der Folium-Karte ermitteln
 map_var_name = wam_map.get_name()
 
-# UI-Anpassung und verlässliches JS-Event-Binding
+# UI-Anpassung inkl. Quellangabe
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -263,15 +269,17 @@ window.addEventListener('load', function() {{
                 <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, WAM..." oninput="filterMapMarkers()" onkeyup="filterMapMarkers()" 
                        style="width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 5px; font-size: 13px; box-sizing: border-box; outline: none;">
             </div>
-            <div style="display: flex; gap: 6px;">
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                 <button onclick="setAllFilters(true)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">Alle auswählen</button>
                 <button onclick="setAllFilters(false)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 4px;">Alle abwählen</button>
+            </div>
+            <div style="font-size: 10px; color: #666; line-height: 1.2;">
+                Datenquelle: <a href="{URL}" target="_blank" style="color: #0066cc; text-decoration: underline;">SVW Terminübersicht</a>
             </div>
         `;
         layerControl.insertBefore(customBox, layerControl.firstChild);
     }}
 
-    // Zugriff auf die konkrete Folium-Karteninstanz
     if (typeof {map_var_name} !== 'undefined') {{
         {map_var_name}.eachLayer(function(layer) {{
             if (layer instanceof L.MarkerClusterGroup) {{
