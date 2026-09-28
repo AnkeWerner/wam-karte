@@ -72,6 +72,16 @@ def is_cell_ignored(text):
         
     return False
 
+# Parst Datumszeichenketten wie "12.10.2025" oder "11.-12.10.2025" in ein ISO-Format YYYY-MM-DD
+def extract_iso_date(date_str):
+    match = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{2,4})', date_str)
+    if match:
+        day, month, year = match.groups()
+        if len(year) == 2:
+            year = "20" + year
+        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    return ""
+
 for table in tables:
     rows = table.find_all("tr")
     for row in rows:
@@ -138,9 +148,11 @@ for table in tables:
 
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
+        iso_date = extract_iso_date(date_str)
 
         events.append({
             "date": date_str,
+            "iso_date": iso_date,
             "location": clean_location,
             "type": turnier_typ,
             "links": links
@@ -149,7 +161,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v35")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v36")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -202,6 +214,7 @@ for event in events:
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
             m.options['search_text'] = f"{event['location']} {event['date']} {event['type']}".lower()
+            m.options['iso_date'] = event['iso_date']
             return m
 
         type_upper = event["type"].upper()
@@ -241,46 +254,35 @@ folium.LayerControl(collapsed=False).add_to(wam_map)
 map_var_name = wam_map.get_name()
 
 # -------------------------------------------------------------
-# Dynamische SVG-Grafiken für Favicon und Link-Vorschau erzeugen
+# Dynamische SVG-Grafiken für Favicon und Link-Vorschau
 # -------------------------------------------------------------
 
-# 1. Favicon (Schachturm SVG)
 favicon_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <rect width="100" height="100" rx="20" fill="#1a5f7a"/>
   <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
 </svg>""")
 favicon_data_url = f"data:image/svg+xml,{favicon_svg}"
 
-# 2. Open Graph Vorschau-Banner SVG (1200x630px Standard-Format)
 preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
   <rect width="1200" height="630" fill="#1a5f7a"/>
-  <!-- Schachbrett-Muster Hintergrund -->
   <g opacity="0.08" fill="#ffffff">
     <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
     <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
     <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
     <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
   </g>
-  <!-- Schachturm-Icon -->
   <g transform="translate(100, 165) scale(3.5)">
     <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
   </g>
-  <!-- Text-Inhalte -->
   <text x="450" y="260" font-family="Arial, sans-serif" font-weight="bold" font-size="64" fill="#ffffff">Schachturniere</text>
   <text x="450" y="340" font-family="Arial, sans-serif" font-weight="bold" font-size="52" fill="#f2a900">Baden-Württemberg</text>
   <text x="450" y="420" font-family="Arial, sans-serif" font-size="32" fill="#e0e0e0">Interaktive Karte &amp; Termine (WAM, WJPT etc.)</text>
 </svg>""")
 preview_data_url = f"data:image/svg+xml,{preview_svg}"
 
-# Meta-Tags & Favicon direkt in den HTML-Head einfügen
 head_meta_html = f"""
-<!-- Website Titel im Tab -->
 <title>Schachturnier-Karte Baden-Württemberg</title>
-
-<!-- Favicon -->
 <link rel="icon" type="image/svg+xml" href="{favicon_data_url}">
-
-<!-- Open Graph / Link-Vorschau (WhatsApp, Social Media etc.) -->
 <meta property="og:title" content="Schachturnier-Karte Baden-Württemberg">
 <meta property="og:description" content="Interaktive Übersicht aller Schachturniere (WAM, WJPT, Jugend- &amp; Amateurturniere) in Baden-Württemberg.">
 <meta property="og:image" content="{preview_data_url}">
@@ -288,7 +290,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung & Skripte
+# UI-Anpassung inkl. Datums-Filter
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -320,6 +322,10 @@ window.addEventListener('load', function() {{
             <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                 <button onclick="setAllFilters(true)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">Alle auswählen</button>
                 <button onclick="setAllFilters(false)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 4px;">Alle abwählen</button>
+            </div>
+            <div style="margin-bottom: 8px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="futureOnlyCheckbox" onchange="filterMapMarkers()" style="cursor: pointer;">
+                <label for="futureOnlyCheckbox" style="cursor: pointer; user-select: none;">📅 Nur zukünftige Termine</label>
             </div>
             <div style="font-size: 10px; color: #666; line-height: 1.2;">
                 Datenquelle: <a href="{URL}" target="_blank" style="color: #0066cc; text-decoration: underline;">SVW Terminübersicht</a>
@@ -354,9 +360,14 @@ function setAllFilters(selectState) {{
 
 function filterMapMarkers() {{
     var inputEl = document.getElementById('mapSearchInput');
+    var futureCb = document.getElementById('futureOnlyCheckbox');
     if (!inputEl) return;
     
     var query = inputEl.value.toLowerCase().trim();
+    var futureOnly = futureCb ? futureCb.checked : false;
+
+    // Heutiges Datum im Format YYYY-MM-DD
+    var todayStr = new Date().toISOString().split('T')[0];
 
     allRegisteredMarkers.forEach(function(item) {{
         var marker = item.marker;
@@ -367,9 +378,18 @@ function filterMapMarkers() {{
             searchText = marker.getTooltip().getContent().toLowerCase();
         }}
 
-        var matches = (query === "" || searchText.includes(query));
+        var matchesQuery = (query === "" || searchText.includes(query));
 
-        if (matches) {{
+        // Datumsfilter-Prüfung
+        var matchesFuture = true;
+        if (futureOnly) {{
+            var isoDate = marker.options.iso_date || "";
+            if (isoDate && isoDate < todayStr) {{
+                matchesFuture = false;
+            }}
+        }}
+
+        if (matchesQuery && matchesFuture) {{
             if (!group.hasLayer(marker)) {{
                 group.addLayer(marker);
             }}
