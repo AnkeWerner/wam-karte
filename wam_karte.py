@@ -8,6 +8,7 @@ import folium
 from folium.plugins import MarkerCluster, LocateControl
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
+from datetime import datetime
 
 # 0. SSL-Warnungen unterdrücken
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -25,7 +26,7 @@ soup = BeautifulSoup(response.text, "html.parser")
 events = []
 tables = soup.find_all("table")
 
-date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
+date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\."
 
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
@@ -72,15 +73,26 @@ def is_cell_ignored(text):
         
     return False
 
-# Verbessertes Parsing von Datumsstrings (z.B. "12.10.2025", "11.-12.10.2025", "11./12.10.25")
-def extract_iso_date(date_str):
-    # Sucht Tag, Monat und Jahr aus dem Haupt-Datumsformat
-    match = re.search(r'(?:[\d{1,2}\s*[\.\/\-–—]+\s*)?(\d{1,2})\.(\d{1,2})\.(\d{2,4})', date_str)
+# Zuverlässiges Datums-Parsing (erkennt auch "27.09.", "12.-13.10.2025" etc.)
+def parse_to_iso(date_str):
+    # Sucht Tag(e), Monat und Jahr
+    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?(?:\s*(\d{2,4}))?', date_str)
     if match:
-        day, month, year = match.groups()
-        if len(year) == 2:
+        day_start, day_end, month, year = match.groups()
+        day = day_end if day_end else day_start
+        
+        # Jahr ergänzen, falls nicht in der Tabelle vorhanden
+        if not year:
+            # Saisonslogik: Monate Sep-Dez -> 2025, Jan-Aug -> 2026
+            year = "2025" if int(month) >= 9 else "2026"
+        elif len(year) == 2:
             year = "20" + year
-        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+            
+        try:
+            dt = datetime(int(year), int(month), int(day))
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            return ""
     return ""
 
 for table in tables:
@@ -96,7 +108,7 @@ for table in tables:
         if "ausgefallen" in row_text.lower():
             continue
 
-        date_match = re.search(date_pattern, row_text)
+        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b', row_text)
         if not date_match:
             continue
             
@@ -149,7 +161,7 @@ for table in tables:
 
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
-        iso_date = extract_iso_date(date_str)
+        iso_date = parse_to_iso(date_str)
 
         events.append({
             "date": date_str,
@@ -162,7 +174,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v37")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v38")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -254,7 +266,7 @@ folium.LayerControl(collapsed=False).add_to(wam_map)
 
 map_var_name = wam_map.get_name()
 
-# Dynamische SVG-Grafiken
+# Meta-Tags & Favicon
 favicon_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <rect width="100" height="100" rx="20" fill="#1a5f7a"/>
   <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -266,8 +278,6 @@ preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" view
   <g opacity="0.08" fill="#ffffff">
     <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
     <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
-    <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
-    <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
   </g>
   <g transform="translate(100, 165) scale(3.5)">
     <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -288,7 +298,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. verbesserter Datums-Filterung
+# UI-Anpassung inkl. funktionierendem Datums-Filter
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -364,12 +374,12 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Heutiges Datum (lokale Zeit YYYY-MM-DD)
+    // Heutiges Datum als YYYY-MM-DD
     var now = new Date();
-    var year = now.getFullYear();
-    var month = String(now.getMonth() + 1).padStart(2, '0');
-    var day = String(now.getDate()).padStart(2, '0');
-    var todayStr = year + '-' + month + '-' + day;
+    var y = now.getFullYear();
+    var m = String(now.getMonth() + 1).padStart(2, '0');
+    var d = String(now.getDate()).padStart(2, '0');
+    var todayStr = y + '-' + m + '-' + d;
 
     allRegisteredMarkers.forEach(function(item) {{
         var marker = item.marker;
@@ -382,11 +392,11 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Datumsfilter-Prüfung
+        // Datumsprüfung
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            // Wenn ein gültiges ISO-Datum existiert und vor heute liegt -> ausblenden
+            // Wenn das ISO-Datum vor dem heutigen liegt, Marker ausblenden
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
@@ -413,3 +423,4 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
+                                   
