@@ -66,50 +66,63 @@ def is_cell_ignored(text):
     clean = text.strip().lower()
     if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
         return True
+    
     if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
+        
     return False
 
-def parse_iso_end_date(row_text):
-    # Liest das vollständige Enddatum (Tag, Monat, Jahr) aus der Tabellenzeile
-    # Funktioniert für "18.10.2025", "03.-05.10.2025", "31.10./01.11.2025" etc.
-    matches = re.findall(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
-    if matches:
-        d, m, y = matches[-1]  # Nimmt immer den letzten gefundenen Tag/Monat (Enddatum)
-        if len(y) == 2:
-            y = "20" + y
+# Erweitertes, noch robusteres Datums-Parsing (erfasst nun auch Jedesheim & Nürtingen)
+def build_iso_date(date_str, current_year, row_text=""):
+    # 1. Prüfe ob komplettes Datum inklusive Jahr im Text/Datumsstring existiert
+    match_full = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', date_str)
+    if not match_full:
+        match_full = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
+
+    if match_full:
+        day, month, year = match_full.groups()
+        if len(year) == 2:
+            year = "20" + year
         try:
-            return datetime(int(y), int(m), int(d)).strftime("%Y-%m-%d")
+            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
             pass
 
-    # Fallback für Daten ohne Jahr in der Zeile
-    matches_short = re.findall(r'(\d{1,2})\.(\d{1,2})\.', row_text)
-    if matches_short:
-        d, m = matches_short[-1]
-        m_int = int(m)
-        y_int = 2025 if m_int >= 9 else 2026
+    # 2. Prüfe auf Tag(e) und Monat ohne Jahr (z.B. "18.10.", "12.-13.10.", "05./06.10.")
+    match_short = re.search(r'(?:(\d{1,2})[\s\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?', date_str)
+    if match_short:
+        day_start, day_end, month = match_short.groups()
+        day = day_end if day_end else day_start
         try:
-            return datetime(y_int, m_int, int(d)).strftime("%Y-%m-%d")
+            return datetime(int(current_year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
             pass
 
     return ""
 
+current_context_year = "2025"
+
 for table in tables:
     rows = table.find_all("tr")
     for row in rows:
         cells = row.find_all(["td", "th"])
-        if len(cells) < 3:
+        if not cells:
             continue
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
-        if "ausgefallen" in row_text.lower():
+        
+        # Saisons- / Jahreskontext aktualisieren
+        years_found = re.findall(r'\b(202[4-9])\b', row_text)
+        if years_found:
+            current_context_year = years_found[-1]
+
+        if len(cells) < 3 or "ausgefallen" in row_text.lower():
             continue
 
         working_cells = cells[:-1] if len(cells) > 3 else cells
         
-        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
+        # Erweitertes Muster für Datums-Erkennung (deckt auch freie Formate in Jedesheim / Nürtingen ab)
+        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\s*[\.\/]?\s*\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
         if not date_match:
             continue
             
@@ -163,10 +176,14 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        iso_date = parse_iso_end_date(row_text)
+        iso_date = build_iso_date(date_str, current_context_year, row_text)
+        
+        display_date = date_str
+        if not re.search(r'20\d{2}', display_date):
+            display_date = f"{date_str}{current_context_year}" if date_str.endswith(".") else f"{date_str}.{current_context_year}"
 
         events.append({
-            "date": date_str,
+            "date": display_date,
             "iso_date": iso_date,
             "location": clean_location,
             "type": turnier_typ,
@@ -176,12 +193,12 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v46")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v42")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Standort-Button
+# Standort-Button hinzufügen
 LocateControl(
     auto_start=False,
     flyTo=True,
@@ -302,7 +319,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung & verlässliches JavaScript
+# UI-Anpassung inkl. doppelter Sicherheitsprüfungen im JS
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -370,6 +387,18 @@ function setAllFilters(selectState) {{
     }});
 }}
 
+// Fallback: extrahiert direkt aus Tooltip/Text ein ISO-Datum
+function parseIsoFromText(text) {{
+    var m = text.match(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/);
+    if (m) {{
+        var d = String(m[1]).padStart(2, '0');
+        var mo = String(m[2]).padStart(2, '0');
+        var y = m[3];
+        return y + '-' + mo + '-' + d;
+    }}
+    return "";
+}}
+
 function filterMapMarkers() {{
     var inputEl = document.getElementById('mapSearchInput');
     var futureCb = document.getElementById('futureOnlyCheckbox');
@@ -378,7 +407,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Aktuelles Datum im ISO-Format (YYYY-MM-DD)
+    // Aktuelles Datum als YYYY-MM-DD
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -396,10 +425,14 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Zukunftsprüfung
+        // Datumstest
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
+            if (!isoDate) {{
+                isoDate = parseIsoFromText(searchText);
+            }}
+
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
