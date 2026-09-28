@@ -26,8 +26,6 @@ soup = BeautifulSoup(response.text, "html.parser")
 events = []
 tables = soup.find_all("table")
 
-date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\."
-
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "abt.", "schach", "verein", "schachabt", "schachabt.", "sabt", "sabt.", "spvgg",
@@ -68,62 +66,49 @@ def is_cell_ignored(text):
     clean = text.strip().lower()
     if clean in ["", "-", "–", "—", "ausgefallen"] or "ausgefallen" in clean:
         return True
-    
     if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
-        
     return False
 
-# Zuverlässige Konvertierung in ISO YYYY-MM-DD
-def extract_iso_date(raw_date_str, row_text, default_year):
-    # 1. Prüfen, ob ein vollständiges Datum wie 18.10.2025 vorhanden ist
-    full_match = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', raw_date_str)
-    if not full_match:
-        full_match = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
-
-    if full_match:
-        day, month, year = full_match.groups()
-        if len(year) == 2:
-            year = "20" + year
+# Direkte Extraktion des ISO-Enddatums (YYYY-MM-DD) aus der Datumszelle mit voller Jahreszahl
+def parse_direct_iso_date(date_str):
+    # Sucht das letzte Vorkommen von Tag, Monat und 4-stelliger Jahreszahl
+    # Beispiele: "18.10.2025" -> Tag 18, Monat 10, Jahr 2025
+    # "03.-05.10.2025" -> Tag 05, Monat 10, Jahr 2025
+    matches = re.findall(r'(\d{1,2})\.(\d{1,2})\.(20\d{2})', date_str)
+    if matches:
+        d, m, y = matches[-1] # Nimmt immer das Enddatum
         try:
-            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
+            return datetime(int(y), int(m), int(d)).strftime("%Y-%m-%d")
         except ValueError:
             pass
-
-    # 2. Prüfen auf verkürzte / mehrtägige Angaben z. B. "03.-05.10."
-    short_match = re.findall(r'(\d{1,2})\.(\d{1,2})\.?', raw_date_str)
-    if short_match:
-        day, month = short_match[-1] # Letzten Tag verwenden (Enddatum)
-        year = default_year
+            
+    # Falls das Jahr 2-stellig angegeben ist (z. B. 18.10.25)
+    matches_short = re.findall(r'(\d{1,2})\.(\d{1,2})\.(\d{2})', date_str)
+    if matches_short:
+        d, m, y = matches_short[-1]
         try:
-            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
+            return datetime(int("20" + y), int(m), int(d)).strftime("%Y-%m-%d")
         except ValueError:
             pass
-
+            
     return ""
-
-current_context_year = "2025"
 
 for table in tables:
     rows = table.find_all("tr")
     for row in rows:
         cells = row.find_all(["td", "th"])
-        if not cells:
+        if len(cells) < 3:
             continue
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
-        
-        # Saisonsjahr bei Überschriften aktualisieren
-        years = re.findall(r'\b(202[4-9])\b', row_text)
-        if years:
-            current_context_year = years[-1]
-
-        if len(cells) < 3 or "ausgefallen" in row_text.lower():
+        if "ausgefallen" in row_text.lower():
             continue
 
         working_cells = cells[:-1] if len(cells) > 3 else cells
         
-        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
+        # Datums-Pattern sucht gezielt nach Einträgen mit Jahreszahl
+        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:20\d{2}|\d{2})\b', row_text)
         if not date_match:
             continue
             
@@ -177,8 +162,9 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        iso_date = extract_iso_date(date_str, row_text, current_context_year)
-        
+        # Exaktes ISO-Datum aus dem Datumseintrag auslesen
+        iso_date = parse_direct_iso_date(date_str)
+
         events.append({
             "date": date_str,
             "iso_date": iso_date,
@@ -190,7 +176,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v43")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v45")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -316,7 +302,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. Javascript
+# UI-Anpassung & exaktes JavaScript
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -392,7 +378,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Heutiges Datum als YYYY-MM-DD
+    // Aktuelles Datum als YYYY-MM-DD
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -414,7 +400,7 @@ function filterMapMarkers() {{
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            // Nur ausblenden, wenn ein valides ISO-Datum vorhanden ist UND es strikt vor heute liegt
+            // Wenn ein ISO-Datum da ist und vor dem heutigen Tag liegt -> ausblenden
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
