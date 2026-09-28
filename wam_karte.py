@@ -26,8 +26,6 @@ soup = BeautifulSoup(response.text, "html.parser")
 events = []
 tables = soup.find_all("table")
 
-date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\."
-
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "abt.", "schach", "verein", "schachabt", "schachabt.", "sabt", "sabt.", "spvgg",
@@ -73,37 +71,40 @@ def is_cell_ignored(text):
         
     return False
 
-# Präzises Erzeugen des ISO-Datums aus Tag/Monat und expliziter Jahreszahl aus Spalte 2
-def make_iso_date(date_str, explicit_year):
-    # Sucht Tag und Monat aus Strings wie "18.10.", "12.-13.10.", "11./12.10."
-    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?', date_str)
-    if match and explicit_year:
-        day_start, day_end, month = match.groups()
+# Zuverlässige Konvertierung in YYYY-MM-DD
+def build_iso_date(date_str, current_year):
+    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?', date_str)
+    if match:
+        day_start, day_end, month, explicit_year = match.groups()
         day = day_end if day_end else day_start
-        
-        year = str(explicit_year).strip()
-        if len(year) == 2:
-            year = "20" + year
-            
+        year = explicit_year if explicit_year else current_year
         try:
             return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
             return ""
     return ""
 
+current_context_year = "2025"  # Standard-Saisonstart
+
 for table in tables:
     rows = table.find_all("tr")
     for row in rows:
         cells = row.find_all(["td", "th"])
-        if len(cells) < 3:
+        if not cells:
             continue
         
-        working_cells = cells[:-1]
-        row_text = " ".join([c.get_text(strip=True) for c in working_cells])
+        row_text = " ".join([c.get_text(strip=True) for c in cells])
         
-        if "ausgefallen" in row_text.lower():
+        # Saisons- / Jahreskontext aktualisieren
+        years_found = re.findall(r'\b(202[4-9])\b', row_text)
+        if years_found:
+            current_context_year = years_found[-1]
+
+        if len(cells) < 3 or "ausgefallen" in row_text.lower():
             continue
 
+        working_cells = cells[:-1] if len(cells) > 3 else cells
+        
         date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
         if not date_match:
             continue
@@ -112,20 +113,6 @@ for table in tables:
         
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
-
-        # Jahreszahl gezielt aus der zweiten Zelle / Spalte 2 lesen
-        year_str = ""
-        if len(working_cells) >= 2:
-            second_cell_text = working_cells[1].get_text(strip=True)
-            year_match = re.search(r'\b(20\d{2}|\d{2})\b', second_cell_text)
-            if year_match:
-                year_str = year_match.group(1)
-
-        # Falls Spalte 2 keine Jahreszahl hat, in der gesamten Zeile suchen
-        if not year_str:
-            year_match = re.search(r'\b(20\d{2})\b', row_text)
-            if year_match:
-                year_str = year_match.group(1)
 
         turnier_infos = []
         links = []
@@ -172,9 +159,12 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        # Datum formatiert mit erfasster Jahreszahl
-        display_date = f"{date_str} {year_str}".strip() if year_str and year_str not in date_str else date_str
-        iso_date = make_iso_date(date_str, year_str)
+        iso_date = build_iso_date(date_str, current_context_year)
+        
+        # Hübsches Datum für die Anzeige erzeugen (z. B. "18.10.2025")
+        display_date = date_str
+        if not re.search(r'20\d{2}', display_date):
+            display_date = f"{date_str}{current_context_year}" if date_str.endswith(".") else f"{date_str}.{current_context_year}"
 
         events.append({
             "date": display_date,
@@ -187,7 +177,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v40")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v41")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -381,6 +371,18 @@ function setAllFilters(selectState) {{
     }});
 }}
 
+// Hilfsfunktion: extrahiert ein ISO-Datum "YYYY-MM-DD" direkt aus Text
+function parseIsoFromText(text) {{
+    var m = text.match(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/);
+    if (m) {{
+        var d = String(m[1]).padStart(2, '0');
+        var mo = String(m[2]).padStart(2, '0');
+        var y = m[3];
+        return y + '-' + mo + '-' + d;
+    }}
+    return "";
+}}
+
 function filterMapMarkers() {{
     var inputEl = document.getElementById('mapSearchInput');
     var futureCb = document.getElementById('futureOnlyCheckbox');
@@ -411,6 +413,10 @@ function filterMapMarkers() {{
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
+            if (!isoDate) {{
+                isoDate = parseIsoFromText(searchText);
+            }}
+
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
@@ -437,4 +443,4 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-    
+        
