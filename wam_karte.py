@@ -89,7 +89,8 @@ for table in tables:
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
 
-        turnier_entries = []
+        turnier_infos = []
+        links = []
         turnier_cells = working_cells[1:]
         
         for cell in turnier_cells:
@@ -99,19 +100,15 @@ for table in tables:
                 clean_cell_text = re.sub(r"[\-–—].*online.*$", "", cell_text, flags=re.IGNORECASE).strip()
                 
                 if clean_cell_text and not is_cell_ignored(clean_cell_text):
-                    cell_links = []
+                    turnier_infos.append(clean_cell_text)
+                    
                     for a in cell.find_all("a", href=True):
                         href = a["href"]
                         full_link = urllib.parse.urljoin(BASE_URL, href)
                         link_title = a.get_text(strip=True) or "Ausschreibung / Link"
-                        cell_links.append({"title": link_title, "url": full_link})
-                    
-                    turnier_entries.append({
-                        "text": clean_cell_text,
-                        "links": cell_links
-                    })
+                        links.append({"title": link_title, "url": full_link})
 
-        if not turnier_entries:
+        if not turnier_infos:
             continue
 
         clean_text = row_text.replace(date_str, "").strip()
@@ -134,27 +131,15 @@ for table in tables:
                 clean_location = target_city
                 break
 
-        all_row_links = []
-        for entry in turnier_entries:
-            all_row_links.extend(entry["links"])
+        unique_infos = list(dict.fromkeys(turnier_infos))
+        turnier_typ = ", ".join(unique_infos)
 
-        if len(all_row_links) > 1:
-            for l in all_row_links:
-                events.append({
-                    "date": date_str,
-                    "location": clean_location,
-                    "type": l["title"],
-                    "links": [l]
-                })
-        else:
-            unique_infos = list(dict.fromkeys([e["text"] for e in turnier_entries]))
-            turnier_typ = ", ".join(unique_infos)
-            events.append({
-                "date": date_str,
-                "location": clean_location,
-                "type": turnier_typ,
-                "links": all_row_links
-            })
+        events.append({
+            "date": date_str,
+            "location": clean_location,
+            "type": turnier_typ,
+            "links": links
+        })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
@@ -164,11 +149,11 @@ geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Ebenen definieren
+# Ebenen mit automatischer Auffächerung
 group_wam = MarkerCluster(name="Amateurturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
-group_maedchen = MarkerCluster(name="Mädchen- & Frauenturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
+group_frauen = MarkerCluster(name="Mädchen- & Frauenturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
 
 markers_added = 0
@@ -205,26 +190,33 @@ for event in events:
             )
 
         type_upper = event["type"].upper()
-        matched = False
+        standard_matched = False
 
-        # Prüfung auf Mädchen- & Frauenturniere
-        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MÄDCHENTAG" in type_upper:
-            make_marker().add_to(group_maedchen)
-            matched = True
-
+        # 1. Prüfe Amateurturniere (WAM / BAM)
         if "WAM" in type_upper or "BAM" in type_upper:
             make_marker().add_to(group_wam)
-            matched = True
+            standard_matched = True
 
+        # 2. Prüfe Jugendturniere (WJPT / JGT / KJPT / BJPT)
         if "WJPT" in type_upper or "JGT" in type_upper or "KJPT" in type_upper or "BJPT" in type_upper:
             make_marker().add_to(group_wjpt)
-            matched = True
+            standard_matched = True
 
+        # 3. Prüfe Schulschachturniere (SSGT)
         if "SSGT" in type_upper:
             make_marker().add_to(group_ssgt)
-            matched = True
+            standard_matched = True
 
-        if not matched:
+        # 4. Prüfe Mädchen- & Frauenturniere
+        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MAEDCHEN" in type_upper:
+            make_marker().add_to(group_frauen)
+            standard_matched = True
+
+        # 5. Prüfe Andere Turnierformen (Schach-WE, Beginner, Cup, Open, etc. ODER falls sonst nichts gepasst hat)
+        andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
+        is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
+
+        if is_andere_explicit or not standard_matched:
             make_marker().add_to(group_andere)
 
         markers_added += 1
