@@ -70,7 +70,7 @@ def is_cell_ignored(text):
         return True
     return False
 
-# Präzises Datums-Parsing für Datumsbereiche (z. B. "25. / 26.07.2026" oder "27. / 28.09.2025")
+# Präzises Datums-Parsing
 def extract_strict_iso_date(date_str, current_year, row_text=""):
     full_text = f"{date_str} {row_text}".strip()
     
@@ -78,15 +78,13 @@ def extract_strict_iso_date(date_str, current_year, row_text=""):
     year_match = re.findall(r'\b(202[4-9])\b', full_text)
     year = year_match[-1] if year_match else current_year
 
-    # 2. Alle Zahlen mit nachfolgendem Punkt erfassen (z. B. "25.", "26.", "07.")
+    # 2. Alle Zahlen mit nachfolgendem Punkt erfassen
     dots_found = re.findall(r'(\d{1,2})\.', date_str)
     
     if len(dots_found) >= 2:
-        # Standard: Vorletzter Wert ist Tag, letzter Wert ist Monat
         day = int(dots_found[-2])
         month = int(dots_found[-1])
         
-        # Spezialfall für "25. / 26.07." (dots_found = ['25', '26', '07'])
         if len(dots_found) == 3:
             day = int(dots_found[1])
             month = int(dots_found[2])
@@ -198,7 +196,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v47")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v48")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -324,7 +322,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. dynamischer JS-Filterung
+# Robuste Javascript-Filterlogik
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -368,19 +366,22 @@ window.addEventListener('load', function() {{
         layerControl.insertBefore(customBox, layerControl.firstChild);
     }}
 
-    if (typeof {map_var_name} !== 'undefined') {{
-        {map_var_name}.eachLayer(function(layer) {{
-            if (layer instanceof L.MarkerClusterGroup) {{
-                var group = layer;
-                group.eachLayer(function(marker) {{
-                    allRegisteredMarkers.push({{
-                        marker: marker,
-                        group: group
+    // Marker und ihre übergeordneten MarkerCluster-Gruppen beim Laden dauerhaft indizieren
+    setTimeout(function() {{
+        if (typeof {map_var_name} !== 'undefined') {{
+            {map_var_name}.eachLayer(function(layer) {{
+                if (layer instanceof L.MarkerClusterGroup) {{
+                    var group = layer;
+                    group.eachLayer(function(marker) {{
+                        allRegisteredMarkers.push({{
+                            marker: marker,
+                            group: group
+                        }});
                     }});
-                }});
-            }}
-        }});
-    }}
+                }}
+            }});
+        }}
+    }}, 500);
 }});
 
 function setAllFilters(selectState) {{
@@ -418,7 +419,7 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Zukunftsprüfung
+        // Zukunfts-Filter
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
@@ -448,4 +449,3 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-        
