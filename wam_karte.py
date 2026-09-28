@@ -89,8 +89,7 @@ for table in tables:
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
 
-        turnier_infos = []
-        links = []
+        turnier_entries = []
         turnier_cells = working_cells[1:]
         
         for cell in turnier_cells:
@@ -100,15 +99,19 @@ for table in tables:
                 clean_cell_text = re.sub(r"[\-–—].*online.*$", "", cell_text, flags=re.IGNORECASE).strip()
                 
                 if clean_cell_text and not is_cell_ignored(clean_cell_text):
-                    turnier_infos.append(clean_cell_text)
-                    
+                    cell_links = []
                     for a in cell.find_all("a", href=True):
                         href = a["href"]
                         full_link = urllib.parse.urljoin(BASE_URL, href)
                         link_title = a.get_text(strip=True) or "Ausschreibung / Link"
-                        links.append({"title": link_title, "url": full_link})
+                        cell_links.append({"title": link_title, "url": full_link})
+                    
+                    turnier_entries.append({
+                        "text": clean_cell_text,
+                        "links": cell_links
+                    })
 
-        if not turnier_infos:
+        if not turnier_entries:
             continue
 
         clean_text = row_text.replace(date_str, "").strip()
@@ -131,25 +134,38 @@ for table in tables:
                 clean_location = target_city
                 break
 
-        unique_infos = list(dict.fromkeys(turnier_infos))
-        turnier_typ = ", ".join(unique_infos)
+        # Sammle alle Links über die gesamte Zeile
+        all_row_links = []
+        for entry in turnier_entries:
+            all_row_links.extend(entry["links"])
 
-        events.append({
-            "date": date_str,
-            "location": clean_location,
-            "type": turnier_typ,
-            "links": links
-        })
+        # Wenn mehrere Links in der Zeile/den Zellen existieren: erstelle für jeden Link einen eigenen Termin
+        if len(all_row_links) > 1:
+            for l in all_row_links:
+                events.append({
+                    "date": date_str,
+                    "location": clean_location,
+                    "type": l["title"],
+                    "links": [l]
+                })
+        else:
+            unique_infos = list(dict.fromkeys([e["text"] for e in turnier_entries]))
+            turnier_typ = ", ".join(unique_infos)
+            events.append({
+                "date": date_str,
+                "location": clean_location,
+                "type": turnier_typ,
+                "links": all_row_links
+            })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v19")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v20")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Ebenen mit den neuen Bezeichnungen
 group_wam = MarkerCluster(name="Amateurturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
@@ -216,4 +232,3 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-            
