@@ -70,7 +70,7 @@ def is_cell_ignored(text):
         return True
     return False
 
-# Präzises Datums-Parsing
+# Exaktes Auslesen des Enddatums (für Nürtingen, Jedesheim etc.)
 def extract_strict_iso_date(date_str, current_year, row_text=""):
     full_text = f"{date_str} {row_text}".strip()
     
@@ -78,13 +78,14 @@ def extract_strict_iso_date(date_str, current_year, row_text=""):
     year_match = re.findall(r'\b(202[4-9])\b', full_text)
     year = year_match[-1] if year_match else current_year
 
-    # 2. Alle Zahlen mit nachfolgendem Punkt erfassen
+    # 2. Alle Zahlen-Punkt-Kombinationen erfassen
     dots_found = re.findall(r'(\d{1,2})\.', date_str)
     
     if len(dots_found) >= 2:
         day = int(dots_found[-2])
         month = int(dots_found[-1])
         
+        # Spezialfall für "25. / 26.07."
         if len(dots_found) == 3:
             day = int(dots_found[1])
             month = int(dots_found[2])
@@ -94,7 +95,7 @@ def extract_strict_iso_date(date_str, current_year, row_text=""):
         except ValueError:
             pass
 
-    # Fallback für einfache Formate (z. B. "07.12.2025")
+    # Fallback für Standard-Formate
     m = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2})', full_text)
     if m:
         d, mo, y = m.groups()
@@ -196,7 +197,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v48")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v49")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -322,7 +323,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# Robuste Javascript-Filterlogik
+# Sichere Javascript-Filterlogik direkt im UI
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -339,6 +340,23 @@ custom_ui_html = f"""
 
 <script>
 var allRegisteredMarkers = [];
+
+function registerAllMarkers() {{
+    allRegisteredMarkers = [];
+    if (typeof {map_var_name} !== 'undefined') {{
+        {map_var_name}.eachLayer(function(layer) {{
+            if (layer instanceof L.MarkerClusterGroup) {{
+                var group = layer;
+                group.eachLayer(function(marker) {{
+                    allRegisteredMarkers.push({{
+                        marker: marker,
+                        group: group
+                    }});
+                }});
+            }}
+        }});
+    }}
+}}
 
 window.addEventListener('load', function() {{
     var layerControl = document.querySelector('.leaflet-control-layers');
@@ -365,23 +383,8 @@ window.addEventListener('load', function() {{
         `;
         layerControl.insertBefore(customBox, layerControl.firstChild);
     }}
-
-    // Marker und ihre übergeordneten MarkerCluster-Gruppen beim Laden dauerhaft indizieren
-    setTimeout(function() {{
-        if (typeof {map_var_name} !== 'undefined') {{
-            {map_var_name}.eachLayer(function(layer) {{
-                if (layer instanceof L.MarkerClusterGroup) {{
-                    var group = layer;
-                    group.eachLayer(function(marker) {{
-                        allRegisteredMarkers.push({{
-                            marker: marker,
-                            group: group
-                        }});
-                    }});
-                }}
-            }});
-        }}
-    }}, 500);
+    
+    registerAllMarkers();
 }});
 
 function setAllFilters(selectState) {{
@@ -394,6 +397,10 @@ function setAllFilters(selectState) {{
 }}
 
 function filterMapMarkers() {{
+    if (allRegisteredMarkers.length === 0) {{
+        registerAllMarkers();
+    }}
+
     var inputEl = document.getElementById('mapSearchInput');
     var futureCb = document.getElementById('futureOnlyCheckbox');
     if (!inputEl) return;
@@ -401,7 +408,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Aktuelles Datum als YYYY-MM-DD
+    // Aktuelles Datum im Format YYYY-MM-DD
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
