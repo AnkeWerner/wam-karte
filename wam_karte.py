@@ -27,7 +27,6 @@ tables = soup.find_all("table")
 
 date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
 
-# Wörter, die rein für die Ortsnamenserkennung gefiltert werden
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "abt.", "schach", "verein", "schachabt", "schachabt.", "sabt", "sabt.", "spvgg",
@@ -144,19 +143,18 @@ for table in tables:
             "date": date_str,
             "location": clean_location,
             "type": turnier_typ,
-            "links": links,
-            "raw_text": row_text
+            "links": links
         })
 
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v27")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v26")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Ebenen mit automatischer Auffächerung
+# Ebenen anlegen
 group_wam = MarkerCluster(name="Amateurturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
@@ -188,16 +186,15 @@ for event in events:
         </div>
         """
 
-        search_title = f"{event['location']} {event['date']} {event['type']} {event['raw_text']}".lower()
+        search_text = f"{event['location']} {event['date']} {event['type']}".lower()
 
         def make_marker():
-            m = folium.Marker(
+            return folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
                 popup=folium.Popup(popup_html, max_width=280),
                 tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
-            return m
 
         type_upper = event["type"].upper()
         standard_matched = False
@@ -231,104 +228,50 @@ for event in events:
 
         markers_added += 1
         print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
-    else:
-        print(f"❌ Ort nicht gefunden: '{event['location']}'")
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
+
+# Interaktive Suchleiste einbauen, die unpassende Marker dynamisch ausblendet
+search_box_html = """
+<div style="position: fixed; top: 10px; left: 60px; z-index: 1000; background: white; padding: 6px 10px; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.3); font-family: sans-serif;">
+    <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, Typ filtern..." onkeyup="filterMapMarkers()" style="width: 200px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+</div>
+
+<script>
+function filterMapMarkers() {
+    var input = document.getElementById('mapSearchInput').value.toLowerCase();
+    
+    // Alle Marker-Cluster auf der Karte durchgehen
+    for (var layerId in map._layers) {
+        var layer = map._layers[layerId];
+        
+        // Prüfen, ob es sich um ein Marker-Cluster oder eine FeatureGroup handelt
+        if (layer.getChildCount || layer.getLayers) {
+            var subLayers = layer.getLayers ? layer.getLayers() : [];
+            subLayers.forEach(function(marker) {
+                if (marker.getTooltip) {
+                    var tooltipText = marker.getTooltip().getContent().toLowerCase();
+                    var popupText = marker.getPopup() ? marker.getPopup().getContent().toLowerCase() : "";
+                    
+                    if (tooltipText.includes(input) || popupText.includes(input)) {
+                        marker.setOpacity(1);
+                        if (marker._icon) marker._icon.style.display = 'block';
+                    } else {
+                        marker.setOpacity(0);
+                        if (marker._icon) marker._icon.style.display = 'none';
+                    }
+                }
+            });
+        }
+    }
+}
+</script>
+"""
+
+wam_map.get_root().html.add_child(folium.Element(search_box_html))
 
 print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
 # 3. als index.html speichern
 wam_map.save("index.html")
-
-# 4. Erweitertes JavaScript: Echtzeit-Filter-Suchleiste + "Alle an / Alle aus" Buttons
-custom_js = """
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    setTimeout(function() {
-        // 1. Buttons "Alle an / Alle aus" in das Layer-Menü einbauen
-        var controlContainer = document.querySelector('.leaflet-control-layers-overlays');
-        if (controlContainer) {
-            var btnContainer = document.createElement('div');
-            btnContainer.style.marginBottom = '8px';
-            btnContainer.style.paddingBottom = '5px';
-            btnContainer.style.borderBottom = '1px solid #ccc';
-
-            btnContainer.innerHTML = `
-                <button id="select-all-btn" style="cursor:pointer; font-size:11px; padding:3px 6px; margin-right:4px; border:1px solid #0066cc; background:#0066cc; color:white; border-radius:3px;">Alle an</button>
-                <button id="deselect-all-btn" style="cursor:pointer; font-size:11px; padding:3px 6px; border:1px solid #666; background:#f0f0f0; color:#333; border-radius:3px;">Alle aus</button>
-            `;
-
-            controlContainer.parentNode.insertBefore(btnContainer, controlContainer);
-
-            document.getElementById('select-all-btn').addEventListener('click', function() {
-                var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(function(cb) {
-                    if (!cb.checked) { cb.click(); }
-                });
-            });
-
-            document.getElementById('deselect-all-btn').addEventListener('click', function() {
-                var checkboxes = controlContainer.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(function(cb) {
-                    if (cb.checked) { cb.click(); }
-                });
-            });
-        }
-
-        # 2. Interaktive Live-Suchleiste oben links einbauen
-        var searchControlDiv = document.createElement('div');
-        searchControlDiv.className = 'leaflet-control leaflet-bar';
-        searchControlDiv.style.backgroundColor = 'white';
-        searchControlDiv.style.padding = '6px 8px';
-        searchControlDiv.style.borderRadius = '4px';
-        searchControlDiv.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
-        searchControlDiv.style.marginTop = '10px';
-        searchControlDiv.style.marginLeft = '10px';
-
-        searchControlDiv.innerHTML = `
-            <input type="text" id="custom-map-search" placeholder="🔎 Ort, Datum oder Turnier filtern..." style="width: 220px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; outline: none;">
-        `;
-
-        var topLeftContainer = document.querySelector('.leaflet-top.leaflet-left');
-        if (topLeftContainer) {
-            topLeftContainer.appendChild(searchControlDiv);
-        }
-
-        // Such-Filter Logik
-        var searchInput = document.getElementById('custom-map-search');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                var query = e.target.value.toLowerCase().strip ? e.target.value.toLowerCase().strip() : e.target.value.toLowerCase().trim();
-                
-                // Durchsuche alle Marker
-                for (var layerId in map._layers) {
-                    var layer = map._layers[layerId];
-                    if (layer instanceof L.Marker) {
-                        var tooltipText = layer.getTooltip() ? layer.getTooltip().getContent().toLowerCase() : "";
-                        var popupText = layer.getPopup() ? layer.getPopup().getContent().toLowerCase() : "";
-                        
-                        if (tooltipText.includes(query) || popupText.includes(query)) {
-                            layer.getElement() && (layer.getElement().style.display = '');
-                        } else {
-                            layer.getElement() && (layer.getElement().style.display = 'none');
-                        }
-                    }
-                }
-            });
-        }
-    }, 500);
-});
-</script>
-</body>
-"""
-
-with open("index.html", "r", encoding="utf-8") as f:
-    content = f.read()
-
-content = content.replace("</body>", custom_js)
-
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(content)
-
-print("index.html erfolgreich erweitert und gespeichert!")
+print("index.html erfolgreich erzeugt!")
