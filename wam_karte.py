@@ -26,6 +26,8 @@ soup = BeautifulSoup(response.text, "html.parser")
 events = []
 tables = soup.find_all("table")
 
+date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\."
+
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "abt.", "schach", "verein", "schachabt", "schachabt.", "sabt", "sabt.", "spvgg",
@@ -72,21 +74,32 @@ def is_cell_ignored(text):
         
     return False
 
-# Robuste ISO-Datums-Erzeugung speziell für mehrtägige Turniere (z.B. "03.-05.10.2025" oder "31.10.-02.11.")
-def build_iso_date(date_str, current_year):
-    # Liest den letzten Tag und den zugehörigen Monat aus
-    # Beispiele: "03.-05.10." -> Tag 05, Monat 10
-    match_end = re.search(r'(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?$', date_str.strip())
-    if not match_end:
-        match_end = re.search(r'(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?', date_str.strip())
+# Zuverlässige Konvertierung in ISO YYYY-MM-DD
+def extract_iso_date(raw_date_str, row_text, default_year):
+    # 1. Prüfen, ob ein vollständiges Datum wie 18.10.2025 vorhanden ist
+    full_match = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', raw_date_str)
+    if not full_match:
+        full_match = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
 
-    if match_end:
-        day, month, explicit_year = match_end.groups()
-        year = explicit_year if explicit_year else current_year
+    if full_match:
+        day, month, year = full_match.groups()
+        if len(year) == 2:
+            year = "20" + year
         try:
             return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
-            return ""
+            pass
+
+    # 2. Prüfen auf verkürzte / mehrtägige Angaben z. B. "03.-05.10."
+    short_match = re.findall(r'(\d{1,2})\.(\d{1,2})\.?', raw_date_str)
+    if short_match:
+        day, month = short_match[-1] # Letzten Tag verwenden (Enddatum)
+        year = default_year
+        try:
+            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+
     return ""
 
 current_context_year = "2025"
@@ -100,9 +113,10 @@ for table in tables:
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
         
-        years_found = re.findall(r'\b(202[4-9])\b', row_text)
-        if years_found:
-            current_context_year = years_found[-1]
+        # Saisonsjahr bei Überschriften aktualisieren
+        years = re.findall(r'\b(202[4-9])\b', row_text)
+        if years:
+            current_context_year = years[-1]
 
         if len(cells) < 3 or "ausgefallen" in row_text.lower():
             continue
@@ -163,14 +177,10 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        iso_date = build_iso_date(date_str, current_context_year)
+        iso_date = extract_iso_date(date_str, row_text, current_context_year)
         
-        display_date = date_str
-        if not re.search(r'20\d{2}', display_date):
-            display_date = f"{date_str}{current_context_year}" if date_str.endswith(".") else f"{date_str}.{current_context_year}"
-
         events.append({
-            "date": display_date,
+            "date": date_str,
             "iso_date": iso_date,
             "location": clean_location,
             "type": turnier_typ,
@@ -180,7 +190,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v42")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v43")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -284,6 +294,8 @@ preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" view
   <g opacity="0.08" fill="#ffffff">
     <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
     <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
+    <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
+    <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
   </g>
   <g transform="translate(100, 165) scale(3.5)">
     <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -304,7 +316,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. korrigierter Datums-Filterung
+# UI-Anpassung inkl. Javascript
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -380,7 +392,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Aktuelles ISO-Datum
+    // Heutiges Datum als YYYY-MM-DD
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -398,10 +410,11 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Zukunftsprüfung
+        // Datumstest
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
+            // Nur ausblenden, wenn ein valides ISO-Datum vorhanden ist UND es strikt vor heute liegt
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
