@@ -134,12 +134,10 @@ for table in tables:
                 clean_location = target_city
                 break
 
-        # Sammle alle Links über die gesamte Zeile
         all_row_links = []
         for entry in turnier_entries:
             all_row_links.extend(entry["links"])
 
-        # Wenn mehrere Links in der Zeile/den Zellen existieren: erstelle für jeden Link einen eigenen Termin
         if len(all_row_links) > 1:
             for l in all_row_links:
                 events.append({
@@ -161,14 +159,16 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v20")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v21")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
+# Ebenen definieren
 group_wam = MarkerCluster(name="Amateurturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_wjpt = MarkerCluster(name="Jugendturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_ssgt = MarkerCluster(name="Schulschachturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
+group_maedchen = MarkerCluster(name="Mädchen- & Frauenturniere", spiderfyOnMaxZoom=True).add_to(wam_map)
 group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
 
 markers_added = 0
@@ -206,6 +206,11 @@ for event in events:
 
         type_upper = event["type"].upper()
         matched = False
+
+        # Prüfung auf Mädchen- & Frauenturniere
+        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MÄDCHENTAG" in type_upper:
+            make_marker().add_to(group_maedchen)
+            matched = True
 
         if "WAM" in type_upper or "BAM" in type_upper:
             make_marker().add_to(group_wam)
