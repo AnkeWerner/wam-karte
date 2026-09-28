@@ -72,9 +72,10 @@ def is_cell_ignored(text):
         
     return False
 
-# Parst Datumszeichenketten wie "12.10.2025" oder "11.-12.10.2025" in ein ISO-Format YYYY-MM-DD
+# Verbessertes Parsing von Datumsstrings (z.B. "12.10.2025", "11.-12.10.2025", "11./12.10.25")
 def extract_iso_date(date_str):
-    match = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{2,4})', date_str)
+    # Sucht Tag, Monat und Jahr aus dem Haupt-Datumsformat
+    match = re.search(r'(?:[\d{1,2}\s*[\.\/\-–—]+\s*)?(\d{1,2})\.(\d{1,2})\.(\d{2,4})', date_str)
     if match:
         day, month, year = match.groups()
         if len(year) == 2:
@@ -161,7 +162,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v36")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v37")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -253,10 +254,7 @@ folium.LayerControl(collapsed=False).add_to(wam_map)
 
 map_var_name = wam_map.get_name()
 
-# -------------------------------------------------------------
-# Dynamische SVG-Grafiken für Favicon und Link-Vorschau
-# -------------------------------------------------------------
-
+# Dynamische SVG-Grafiken
 favicon_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <rect width="100" height="100" rx="20" fill="#1a5f7a"/>
   <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -290,7 +288,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. Datums-Filter
+# UI-Anpassung inkl. verbesserter Datums-Filterung
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -366,8 +364,12 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Heutiges Datum im Format YYYY-MM-DD
-    var todayStr = new Date().toISOString().split('T')[0];
+    // Heutiges Datum (lokale Zeit YYYY-MM-DD)
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = String(now.getMonth() + 1).padStart(2, '0');
+    var day = String(now.getDate()).padStart(2, '0');
+    var todayStr = year + '-' + month + '-' + day;
 
     allRegisteredMarkers.forEach(function(item) {{
         var marker = item.marker;
@@ -384,6 +386,7 @@ function filterMapMarkers() {{
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
+            // Wenn ein gültiges ISO-Datum existiert und vor heute liegt -> ausblenden
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
