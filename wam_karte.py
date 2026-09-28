@@ -31,9 +31,9 @@ noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "schach", "verein", "schachabt", "sabt", "spvgg",
     "sc", "sf", "sv", "vfl", "cup", "biber", "stand", "vom", "der", "u.", "und", "mit", "oder", "für",
-    "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur", "bjem", "stgt",
-    "mädchen", "schnellschach", "mädchentag", "frühlingsturnier", "familien", "meisterschaft", "off", "offene",
-    "stuttgarter", "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer"
+    "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur", "bjem",
+    "schnellschach", "frühlingsturnier", "familien", "meisterschaft", "off", "offene",
+    "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer"
 ]
 
 location_mapping = {
@@ -51,6 +51,10 @@ location_mapping = {
     "niefern": "Niefern-Öschelbronn",
     "öschelbronn": "Niefern-Öschelbronn",
     "sillenbuch": "Stuttgart Sillenbuch",
+    "stuttgart": "Stuttgart",
+    "stgt": "Stuttgart",
+    "stuttgarter": "Stuttgart",
+    "wolfbusch": "Stuttgart Wolfbusch",
     "neuhausen": "Neuhausen auf den Fildern",
     "freiberg": "Freiberg am Neckar",
     "sulzbach": "Sulzbach an der Murr",
@@ -144,7 +148,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v21")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v22")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -208,11 +212,11 @@ for event in events:
             standard_matched = True
 
         # 4. Prüfe Mädchen- & Frauenturniere
-        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MAEDCHEN" in type_upper:
+        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MAEDCHEN" in type_upper or "MÄDCHENTAG" in type_upper:
             make_marker().add_to(group_frauen)
             standard_matched = True
 
-        # 5. Prüfe Andere Turnierformen (Schach-WE, Beginner, Cup, Open, etc. ODER falls sonst nichts gepasst hat)
+        # 5. Prüfe Andere Turnierformen
         andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
         is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
@@ -221,6 +225,8 @@ for event in events:
 
         markers_added += 1
         print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
+    else:
+        print(f"❌ Ort nicht gefunden: '{event['location']}'")
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
