@@ -149,7 +149,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v26")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v28")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -187,12 +187,15 @@ for event in events:
         """
 
         def make_marker():
-            return folium.Marker(
+            m = folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
                 popup=folium.Popup(popup_html, max_width=280),
                 tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                 icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
             )
+            # Such-Text explizit am Marker hinterlegen
+            m.options['search_text'] = f"{event['location']} {event['date']} {event['type']}".lower()
+            return m
 
         type_upper = event["type"].upper()
         standard_matched = False
@@ -225,23 +228,54 @@ for event in events:
             m.add_to(group_andere)
 
         markers_added += 1
-        print(f"✔ Marker: {event['date']} [{event['type']}] in {event['location']}")
 
+# Standard LayerControl hinzufügen
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
-# Erweitere Steuerung: Suchleiste + Filter-Aktionen ("Alle auswählen" / "Alle abwählen")
-controls_html = """
-<div style="position: fixed; top: 10px; left: 60px; z-index: 1000; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-family: sans-serif; display: flex; flex-direction: column; gap: 8px;">
-    <div style="display: flex; gap: 6px;">
-        <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, WAM, Rommelshausen..." onkeyup="filterMapMarkers()" style="width: 220px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
-    </div>
-    <div style="display: flex; gap: 6px;">
-        <button onclick="setAllFilters(true)" style="flex: 1; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #e7f3fe; color: #0c5460; border: 1px solid #bee5eb; border-radius: 3px;">Alle auswählen</button>
-        <button onclick="setAllFilters(false)" style="flex: 1; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 3px;">Alle abwählen</button>
-    </div>
-</div>
+# Such- und Auswahlleiste direkt oben in die Layer-Steuerungsbox integrieren
+custom_ui_html = """
+<style>
+/* Styling-Anpassung der LayerControl-Box oben rechts */
+.leaflet-top.leaflet-right .leaflet-control-layers {
+    margin-top: 10px !important;
+    margin-right: 10px !important;
+    padding: 12px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+    font-family: Arial, sans-serif !important;
+    min-width: 240px;
+    max-width: 280px;
+}
+</style>
 
 <script>
+window.addEventListener('DOMContentLoaded', function() {
+    // Warten, bis Folium das Menü erzeugt hat
+    setTimeout(function() {
+        var layerControl = document.querySelector('.leaflet-control-layers');
+        if (!layerControl) return;
+
+        // Container für Suchfeld und Buttons
+        var customBox = document.createElement('div');
+        customBox.style.cssText = 'margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 10px;';
+
+        customBox.innerHTML = `
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, WAM..." oninput="filterMapMarkers()" 
+                       style="width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 5px; font-size: 13px; box-sizing: border-box; outline: none;">
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button onclick="setAllFilters(true)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">Alle auswählen</button>
+                <button onclick="setAllFilters(false)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 4px;">Alle abwählen</button>
+            </div>
+        `;
+
+        // Menü-Elemente ganz oben in die Layer-Box einfügen
+        layerControl.insertBefore(customBox, layerControl.firstChild);
+    }, 400);
+});
+
+// Alle Kategorien auswählen oder abwählen
 function setAllFilters(selectState) {
     var checkboxes = document.querySelectorAll('.leaflet-control-layers-overlays input[type="checkbox"]');
     checkboxes.forEach(function(cb) {
@@ -251,40 +285,36 @@ function setAllFilters(selectState) {
     });
 }
 
+// Live-Echtzeitsuche für Marker
 function filterMapMarkers() {
-    var input = document.getElementById('mapSearchInput').value.toLowerCase();
-    
-    // Durchlaufe alle aktiven Marker
-    for (var layerId in map._layers) {
-        var layer = map._layers[layerId];
-        
-        if (layer.getChildCount || layer.getLayers) {
-            var subLayers = layer.getLayers ? layer.getLayers() : [];
-            subLayers.forEach(function(marker) {
-                if (marker.getTooltip) {
-                    var tooltipText = marker.getTooltip().getContent().toLowerCase();
-                    var popupText = marker.getPopup() ? marker.getPopup().getContent().toLowerCase() : "";
-                    
-                    if (tooltipText.includes(input) || popupText.includes(input)) {
-                        marker.setOpacity(1);
-                        if (marker._icon) marker._icon.style.display = 'block';
-                    } else {
-                        marker.setOpacity(0);
-                        if (marker._icon) marker._icon.style.display = 'none';
-                    }
+    var query = document.getElementById('mapSearchInput').value.toLowerCase().trim();
+
+    map.eachLayer(function(layer) {
+        if (layer instanceof L.MarkerClusterGroup) {
+            layer.eachLayer(function(marker) {
+                var searchText = marker.options.search_text || "";
+                if (!searchText && marker.getTooltip) {
+                    searchText = marker.getTooltip().getContent().toLowerCase();
+                }
+
+                if (query === "" || searchText.includes(query)) {
+                    if (marker._icon) marker._icon.style.display = '';
+                    if (marker._shadow) marker._shadow.style.display = '';
+                } else {
+                    if (marker._icon) marker._icon.style.display = 'none';
+                    if (marker._shadow) marker._shadow.style.display = 'none';
                 }
             });
         }
-    }
+    });
 }
 </script>
 """
 
-wam_map.get_root().html.add_child(folium.Element(controls_html))
+wam_map.get_root().html.add_child(folium.Element(custom_ui_html))
 
 print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-        
