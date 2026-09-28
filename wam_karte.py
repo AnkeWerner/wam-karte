@@ -72,15 +72,15 @@ def is_cell_ignored(text):
         
     return False
 
-# Erweitertes, noch robusteres Datums-Parsing (erfasst nun auch Jedesheim & Nürtingen)
-def build_iso_date(date_str, current_year, row_text=""):
-    # 1. Prüfe ob komplettes Datum inklusive Jahr im Text/Datumsstring existiert
-    match_full = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', date_str)
-    if not match_full:
-        match_full = re.search(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', row_text)
-
-    if match_full:
-        day, month, year = match_full.groups()
+# PARSING VON HINTEN (RECHTS): Findet das Datum am Ende des Strings
+def build_iso_date_from_right(date_str, current_year, row_text=""):
+    combined = (date_str + " " + row_text).strip()
+    
+    # 1. Versuche volles Datum von hinten zu matchen (z. B. "... 18.10.2025")
+    full_matches = list(re.finditer(r'(\d{1,2})\.(\d{1,2})\.(20\d{2}|\d{2})', combined))
+    if full_matches:
+        last_match = full_matches[-1]
+        day, month, year = last_match.groups()
         if len(year) == 2:
             year = "20" + year
         try:
@@ -88,11 +88,11 @@ def build_iso_date(date_str, current_year, row_text=""):
         except ValueError:
             pass
 
-    # 2. Prüfe auf Tag(e) und Monat ohne Jahr (z.B. "18.10.", "12.-13.10.", "05./06.10.")
-    match_short = re.search(r'(?:(\d{1,2})[\s\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?', date_str)
-    if match_short:
-        day_start, day_end, month = match_short.groups()
-        day = day_end if day_end else day_start
+    # 2. Versuche Datum ohne Jahr von hinten zu matchen (z. B. "... 18.10.")
+    short_matches = list(re.finditer(r'(\d{1,2})\.(\d{1,2})\.?', combined))
+    if short_matches:
+        last_match = short_matches[-1]
+        day, month = last_match.groups()
         try:
             return datetime(int(current_year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
@@ -111,7 +111,7 @@ for table in tables:
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
         
-        # Saisons- / Jahreskontext aktualisieren
+        # Saisons- / Jahreskontext aus der Tabelle mitnehmen
         years_found = re.findall(r'\b(202[4-9])\b', row_text)
         if years_found:
             current_context_year = years_found[-1]
@@ -121,7 +121,6 @@ for table in tables:
 
         working_cells = cells[:-1] if len(cells) > 3 else cells
         
-        # Erweitertes Muster für Datums-Erkennung (deckt auch freie Formate in Jedesheim / Nürtingen ab)
         date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\s*[\.\/]?\s*\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
         if not date_match:
             continue
@@ -176,7 +175,8 @@ for table in tables:
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
         
-        iso_date = build_iso_date(date_str, current_context_year, row_text)
+        # ISO-Datum von hinten erzeugen
+        iso_date = build_iso_date_from_right(date_str, current_context_year, row_text)
         
         display_date = date_str
         if not re.search(r'20\d{2}', display_date):
@@ -193,12 +193,12 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v42")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v43")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Standort-Button hinzufügen
+# Standort-Button
 LocateControl(
     auto_start=False,
     flyTo=True,
@@ -319,7 +319,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. doppelter Sicherheitsprüfungen im JS
+# UI-Anpassung
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -387,13 +387,14 @@ function setAllFilters(selectState) {{
     }});
 }}
 
-// Fallback: extrahiert direkt aus Tooltip/Text ein ISO-Datum
-function parseIsoFromText(text) {{
-    var m = text.match(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/);
-    if (m) {{
-        var d = String(m[1]).padStart(2, '0');
-        var mo = String(m[2]).padStart(2, '0');
-        var y = m[3];
+// Hilfsfunktion: extrahiert von rechts aus Text ein ISO-Datum
+function parseIsoFromTextRight(text) {{
+    var matches = Array.from(text.matchAll(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/g));
+    if (matches.length > 0) {{
+        var last = matches[matches.length - 1];
+        var d = String(last[1]).padStart(2, '0');
+        var mo = String(last[2]).padStart(2, '0');
+        var y = last[3];
         return y + '-' + mo + '-' + d;
     }}
     return "";
@@ -430,7 +431,7 @@ function filterMapMarkers() {{
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
             if (!isoDate) {{
-                isoDate = parseIsoFromText(searchText);
+                isoDate = parseIsoFromTextRight(searchText);
             }}
 
             if (isoDate && isoDate < todayStr) {{
