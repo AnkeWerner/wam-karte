@@ -26,7 +26,7 @@ soup = BeautifulSoup(response.text, "html.parser")
 events = []
 tables = soup.find_all("table")
 
-date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\."
+date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\."
 
 noise_words = [
     "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
@@ -73,24 +73,20 @@ def is_cell_ignored(text):
         
     return False
 
-# Zuverlässiges Datums-Parsing (erkennt auch "27.09.", "12.-13.10.2025" etc.)
-def parse_to_iso(date_str):
-    # Sucht Tag(e), Monat und Jahr
-    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?(?:\s*(\d{2,4}))?', date_str)
-    if match:
-        day_start, day_end, month, year = match.groups()
+# Präzises Erzeugen des ISO-Datums aus Tag/Monat und expliziter Jahreszahl aus Spalte 2
+def make_iso_date(date_str, explicit_year):
+    # Sucht Tag und Monat aus Strings wie "18.10.", "12.-13.10.", "11./12.10."
+    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?', date_str)
+    if match and explicit_year:
+        day_start, day_end, month = match.groups()
         day = day_end if day_end else day_start
         
-        # Jahr ergänzen, falls nicht in der Tabelle vorhanden
-        if not year:
-            # Saisonslogik: Monate Sep-Dez -> 2025, Jan-Aug -> 2026
-            year = "2025" if int(month) >= 9 else "2026"
-        elif len(year) == 2:
+        year = str(explicit_year).strip()
+        if len(year) == 2:
             year = "20" + year
             
         try:
-            dt = datetime(int(year), int(month), int(day))
-            return dt.strftime("%Y-%m-%d")
+            return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
         except ValueError:
             return ""
     return ""
@@ -108,7 +104,7 @@ for table in tables:
         if "ausgefallen" in row_text.lower():
             continue
 
-        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b', row_text)
+        date_match = re.search(r'\b\d{1,2}\s*[\.\/]?\s*[\-–—\/]?\s*\d{0,2}\.\d{1,2}\.(?:\d{4}|\d{2})?\b|\d{1,2}\.\d{1,2}\.', row_text)
         if not date_match:
             continue
             
@@ -116,6 +112,20 @@ for table in tables:
         
         if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
             continue
+
+        # Jahreszahl gezielt aus der zweiten Zelle / Spalte 2 lesen
+        year_str = ""
+        if len(working_cells) >= 2:
+            second_cell_text = working_cells[1].get_text(strip=True)
+            year_match = re.search(r'\b(20\d{2}|\d{2})\b', second_cell_text)
+            if year_match:
+                year_str = year_match.group(1)
+
+        # Falls Spalte 2 keine Jahreszahl hat, in der gesamten Zeile suchen
+        if not year_str:
+            year_match = re.search(r'\b(20\d{2})\b', row_text)
+            if year_match:
+                year_str = year_match.group(1)
 
         turnier_infos = []
         links = []
@@ -161,10 +171,13 @@ for table in tables:
 
         unique_infos = list(dict.fromkeys(turnier_infos))
         turnier_typ = ", ".join(unique_infos)
-        iso_date = parse_to_iso(date_str)
+        
+        # Datum formatiert mit erfasster Jahreszahl
+        display_date = f"{date_str} {year_str}".strip() if year_str and year_str not in date_str else date_str
+        iso_date = make_iso_date(date_str, year_str)
 
         events.append({
-            "date": date_str,
+            "date": display_date,
             "iso_date": iso_date,
             "location": clean_location,
             "type": turnier_typ,
@@ -174,7 +187,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v38")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v40")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -278,6 +291,8 @@ preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" view
   <g opacity="0.08" fill="#ffffff">
     <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
     <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
+    <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
+    <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
   </g>
   <g transform="translate(100, 165) scale(3.5)">
     <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -298,7 +313,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. funktionierendem Datums-Filter
+# UI-Anpassung inkl. JS-Filterung
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -374,7 +389,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Heutiges Datum als YYYY-MM-DD
+    // Aktuelles Datum als YYYY-MM-DD
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -392,11 +407,10 @@ function filterMapMarkers() {{
 
         var matchesQuery = (query === "" || searchText.includes(query));
 
-        // Datumsprüfung
+        // Zukunftsprüfung
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            // Wenn das ISO-Datum vor dem heutigen liegt, Marker ausblenden
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
@@ -423,4 +437,4 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-                                   
+    
