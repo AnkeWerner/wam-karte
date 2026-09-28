@@ -186,8 +186,6 @@ for event in events:
         </div>
         """
 
-        search_text = f"{event['location']} {event['date']} {event['type']}".lower()
-
         def make_marker():
             return folium.Marker(
                 location=[location_data.latitude, location_data.longitude],
@@ -231,21 +229,35 @@ for event in events:
 
 folium.LayerControl(collapsed=False).add_to(wam_map)
 
-# Interaktive Suchleiste einbauen, die unpassende Marker dynamisch ausblendet
-search_box_html = """
-<div style="position: fixed; top: 10px; left: 60px; z-index: 1000; background: white; padding: 6px 10px; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.3); font-family: sans-serif;">
-    <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, Typ filtern..." onkeyup="filterMapMarkers()" style="width: 200px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+# Erweitere Steuerung: Suchleiste + Filter-Aktionen ("Alle auswählen" / "Alle abwählen")
+controls_html = """
+<div style="position: fixed; top: 10px; left: 60px; z-index: 1000; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-family: sans-serif; display: flex; flex-direction: column; gap: 8px;">
+    <div style="display: flex; gap: 6px;">
+        <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, WAM, Rommelshausen..." onkeyup="filterMapMarkers()" style="width: 220px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+    </div>
+    <div style="display: flex; gap: 6px;">
+        <button onclick="setAllFilters(true)" style="flex: 1; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #e7f3fe; color: #0c5460; border: 1px solid #bee5eb; border-radius: 3px;">Alle auswählen</button>
+        <button onclick="setAllFilters(false)" style="flex: 1; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 3px;">Alle abwählen</button>
+    </div>
 </div>
 
 <script>
+function setAllFilters(selectState) {
+    var checkboxes = document.querySelectorAll('.leaflet-control-layers-overlays input[type="checkbox"]');
+    checkboxes.forEach(function(cb) {
+        if (cb.checked !== selectState) {
+            cb.click();
+        }
+    });
+}
+
 function filterMapMarkers() {
     var input = document.getElementById('mapSearchInput').value.toLowerCase();
     
-    // Alle Marker-Cluster auf der Karte durchgehen
+    // Durchlaufe alle aktiven Marker
     for (var layerId in map._layers) {
         var layer = map._layers[layerId];
         
-        // Prüfen, ob es sich um ein Marker-Cluster oder eine FeatureGroup handelt
         if (layer.getChildCount || layer.getLayers) {
             var subLayers = layer.getLayers ? layer.getLayers() : [];
             subLayers.forEach(function(marker) {
@@ -268,10 +280,10 @@ function filterMapMarkers() {
 </script>
 """
 
-wam_map.get_root().html.add_child(folium.Element(search_box_html))
+wam_map.get_root().html.add_child(folium.Element(controls_html))
 
 print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 
-# 3. als index.html speichern
+# 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
