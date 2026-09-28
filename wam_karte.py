@@ -27,11 +27,12 @@ tables = soup.find_all("table")
 
 date_pattern = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
 
+# Wörter, die rein für die Ortsnamenserkennung gefiltert werden
 noise_words = [
-    "ok", "jgt", "ssgt", "kjpt", "bjpt", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
+    "ok", "jgt", "ssgt", "kjpt", "bjpt", "bjem", "bam", "wam", "wjpt", "mfc", "mhc", "u12", "u8", "u10", "u14", "u18", "u25", "u08",
     "finale", "ko", "ausgefallen", "ist", "jugend", "abt", "abt.", "schach", "verein", "schachabt", "schachabt.", "sabt", "sabt.", "spvgg",
     "sc", "sf", "sv", "vfl", "cup", "biber", "stand", "vom", "der", "u.", "und", "mit", "oder", "für",
-    "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur", "bjem",
+    "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur",
     "schnellschach", "frühlingsturnier", "familien", "meisterschaft", "off", "offene",
     "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer"
 ]
@@ -149,7 +150,7 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v23")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v24")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -197,22 +198,27 @@ for event in events:
         type_upper = event["type"].upper()
         standard_matched = False
 
+        # 1. Prüfe Amateurturniere (WAM / BAM)
         if "WAM" in type_upper or "BAM" in type_upper:
             make_marker().add_to(group_wam)
             standard_matched = True
 
-        if "WJPT" in type_upper or "JGT" in type_upper or "KJPT" in type_upper or "BJPT" in type_upper:
+        # 2. Prüfe Jugendturniere (WJPT / JGT / KJPT / BJPT / BJEM / Kinder / Jugendliche)
+        if any(kw in type_upper for kw in ["WJPT", "JGT", "KJPT", "BJPT", "BJEM", "KINDER", "JUGENDLICHE", "JUGEND"]):
             make_marker().add_to(group_wjpt)
             standard_matched = True
 
+        # 3. Prüfe Schulschachturniere (SSGT)
         if "SSGT" in type_upper:
             make_marker().add_to(group_ssgt)
             standard_matched = True
 
-        if "MÄDCHEN" in type_upper or "FRAUEN" in type_upper or "MAEDCHEN" in type_upper or "MÄDCHENTAG" in type_upper:
+        # 4. Prüfe Mädchen- & Frauenturniere
+        if any(kw in type_upper for kw in ["MÄDCHEN", "FRAUEN", "MAEDCHEN", "MÄDCHENTAG"]):
             make_marker().add_to(group_frauen)
             standard_matched = True
 
+        # 5. Prüfe Andere Turnierformen
         andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
         is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
