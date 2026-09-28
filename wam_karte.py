@@ -58,7 +58,8 @@ location_mapping = {
     "freiberg": "Freiberg am Neckar",
     "sulzbach": "Sulzbach an der Murr",
     "karlsruher": "Karlsruhe",
-    "steinhausen": "Steinhausen an der Rottum"
+    "steinhausen": "Steinhausen an der Rottum",
+    "nürtingen": "Nürtingen"
 }
 
 def is_cell_ignored(text):
@@ -71,12 +72,16 @@ def is_cell_ignored(text):
         
     return False
 
-# Zuverlässige Konvertierung in YYYY-MM-DD
+# Robuste ISO-Datums-Erzeugung speziell für mehrtägige Turniere (z.B. "03.-05.10.2025" oder "31.10.-02.11.")
 def build_iso_date(date_str, current_year):
-    match = re.search(r'(?:(\d{1,2})[\.\/–—\-]+)?(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?', date_str)
-    if match:
-        day_start, day_end, month, explicit_year = match.groups()
-        day = day_end if day_end else day_start
+    # Liest den letzten Tag und den zugehörigen Monat aus
+    # Beispiele: "03.-05.10." -> Tag 05, Monat 10
+    match_end = re.search(r'(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?$', date_str.strip())
+    if not match_end:
+        match_end = re.search(r'(\d{1,2})\.(\d{1,2})\.?(?:\s*(20\d{2}))?', date_str.strip())
+
+    if match_end:
+        day, month, explicit_year = match_end.groups()
         year = explicit_year if explicit_year else current_year
         try:
             return datetime(int(year), int(month), int(day)).strftime("%Y-%m-%d")
@@ -84,7 +89,7 @@ def build_iso_date(date_str, current_year):
             return ""
     return ""
 
-current_context_year = "2025"  # Standard-Saisonstart
+current_context_year = "2025"
 
 for table in tables:
     rows = table.find_all("tr")
@@ -95,7 +100,6 @@ for table in tables:
         
         row_text = " ".join([c.get_text(strip=True) for c in cells])
         
-        # Saisons- / Jahreskontext aktualisieren
         years_found = re.findall(r'\b(202[4-9])\b', row_text)
         if years_found:
             current_context_year = years_found[-1]
@@ -161,7 +165,6 @@ for table in tables:
         
         iso_date = build_iso_date(date_str, current_context_year)
         
-        # Hübsches Datum für die Anzeige erzeugen (z. B. "18.10.2025")
         display_date = date_str
         if not re.search(r'20\d{2}', display_date):
             display_date = f"{date_str}{current_context_year}" if date_str.endswith(".") else f"{date_str}.{current_context_year}"
@@ -177,12 +180,12 @@ for table in tables:
 print(f"Gefundene gültige Turniere: {len(events)}")
 
 # 2. Geocoding & Karte initialisieren
-geolocator = Nominatim(user_agent="wam_schach_karte_app_v41")
+geolocator = Nominatim(user_agent="wam_schach_karte_app_v42")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
 wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
 
-# Standort-Button hinzufügen
+# Standort-Button
 LocateControl(
     auto_start=False,
     flyTo=True,
@@ -281,8 +284,6 @@ preview_svg = urllib.parse.quote("""<svg xmlns="http://www.w3.org/2000/svg" view
   <g opacity="0.08" fill="#ffffff">
     <rect x="0" y="0" width="150" height="150"/><rect x="300" y="0" width="150" height="150"/><rect x="600" y="0" width="150" height="150"/><rect x="900" y="0" width="150" height="150"/>
     <rect x="150" y="150" width="150" height="150"/><rect x="450" y="150" width="150" height="150"/><rect x="750" y="150" width="150" height="150"/><rect x="1050" y="150" width="150" height="150"/>
-    <rect x="0" y="300" width="150" height="150"/><rect x="300" y="300" width="150" height="150"/><rect x="600" y="300" width="150" height="150"/><rect x="900" y="300" width="150" height="150"/>
-    <rect x="150" y="450" width="150" height="150"/><rect x="450" y="450" width="150" height="150"/><rect x="750" y="450" width="150" height="150"/><rect x="1050" y="450" width="150" height="150"/>
   </g>
   <g transform="translate(100, 165) scale(3.5)">
     <path d="M 25 80 L 75 80 L 75 70 L 25 70 Z M 30 70 L 35 45 L 65 45 L 70 70 Z M 32 45 L 30 30 L 38 30 L 38 37 L 46 37 L 46 30 L 54 30 L 54 37 L 62 37 L 62 30 L 70 30 L 68 45 Z" fill="#f2a900"/>
@@ -303,7 +304,7 @@ head_meta_html = f"""
 """
 wam_map.get_root().header.add_child(folium.Element(head_meta_html))
 
-# UI-Anpassung inkl. JS-Filterung
+# UI-Anpassung inkl. korrigierter Datums-Filterung
 custom_ui_html = f"""
 <style>
 .leaflet-top.leaflet-right .leaflet-control-layers {{
@@ -371,18 +372,6 @@ function setAllFilters(selectState) {{
     }});
 }}
 
-// Hilfsfunktion: extrahiert ein ISO-Datum "YYYY-MM-DD" direkt aus Text
-function parseIsoFromText(text) {{
-    var m = text.match(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(20\\d{{2}})/);
-    if (m) {{
-        var d = String(m[1]).padStart(2, '0');
-        var mo = String(m[2]).padStart(2, '0');
-        var y = m[3];
-        return y + '-' + mo + '-' + d;
-    }}
-    return "";
-}}
-
 function filterMapMarkers() {{
     var inputEl = document.getElementById('mapSearchInput');
     var futureCb = document.getElementById('futureOnlyCheckbox');
@@ -391,7 +380,7 @@ function filterMapMarkers() {{
     var query = inputEl.value.toLowerCase().trim();
     var futureOnly = futureCb ? futureCb.checked : false;
 
-    // Aktuelles Datum als YYYY-MM-DD
+    // Aktuelles ISO-Datum
     var now = new Date();
     var y = now.getFullYear();
     var m = String(now.getMonth() + 1).padStart(2, '0');
@@ -413,10 +402,6 @@ function filterMapMarkers() {{
         var matchesFuture = true;
         if (futureOnly) {{
             var isoDate = marker.options.iso_date || "";
-            if (!isoDate) {{
-                isoDate = parseIsoFromText(searchText);
-            }}
-
             if (isoDate && isoDate < todayStr) {{
                 matchesFuture = false;
             }}
@@ -443,4 +428,3 @@ print(f"\nErfolgreich auf der Karte gesetzte Marker: {markers_added}")
 # 3. Als index.html speichern
 wam_map.save("index.html")
 print("index.html erfolgreich erzeugt!")
-        
