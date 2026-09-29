@@ -56,10 +56,17 @@ def fetch_events():
         rows = table.find_all("tr")
         for row in rows:
             cells = row.find_all(["td", "th"])
+            
+            # Mindestens Wochentag, Datum, Turnierinfo
             if len(cells) < 3:
                 continue
 
-            date_cell_text = cells[1].get_text(strip=True)
+            # KORREKTUR: Die letzte Spalte ("erl.") strikt abschneiden!
+            # Nur die Spalten von Index 0 bis vorletzte Spalte verwenden.
+            valid_cells = cells[:-1]
+
+            # 2. Spalte (Index 1) ist das Datum
+            date_cell_text = valid_cells[1].get_text(strip=True)
             date_match = re.search(DATE_PATTERN, date_cell_text)
             if not date_match:
                 continue
@@ -67,13 +74,15 @@ def fetch_events():
             date_str = date_match.group(0).strip()
             iso_end_date = parse_end_date_iso(date_cell_text)
 
-            row_full_text = " ".join([c.get_text(strip=True) for c in cells])
-            if "ausgefallen" in row_full_text.lower() or "stand vom" in row_full_text.lower():
+            row_text_without_erl = " ".join([c.get_text(strip=True) for c in valid_cells])
+            if "ausgefallen" in row_text_without_erl.lower() or "stand vom" in row_text_without_erl.lower():
                 continue
 
             turnier_infos = []
             links = []
-            turnier_cells = cells[2:]
+            
+            # Nur die mittleren Turnier-Spalten auswerten (ohne Datum & ohne "erl.")
+            turnier_cells = valid_cells[2:]
 
             for cell in turnier_cells:
                 cell_text = cell.get_text(separator=" ", strip=True)
@@ -93,7 +102,8 @@ def fetch_events():
             if not turnier_infos:
                 continue
 
-            clean_text = row_full_text.replace(date_str, "").strip()
+            # Ortsbereinigung ohne die "erl."-Spalte
+            clean_text = row_text_without_erl.replace(date_str, "").strip()
             clean_text = re.sub(r"\b(Sa|So|Mo|Di|Mi|Do|Fr|Sa\/So|So\/Sa)\b", "", clean_text, flags=re.IGNORECASE)
             clean_text = re.sub(r"\d+\.", "", clean_text)
             clean_text = re.sub(r"[,\-\/:\+\(\)]", " ", clean_text)
@@ -109,7 +119,7 @@ def fetch_events():
             clean_location = raw_location
 
             for key, target_city in LOCATION_MAPPING.items():
-                if key in raw_location.lower() or key in row_full_text.lower():
+                if key in raw_location.lower() or key in row_text_without_erl.lower():
                     clean_location = target_city
                     break
 
@@ -124,6 +134,6 @@ def fetch_events():
                 "links": links
             })
 
-    print(f"✔ Gefundene gültige Turniere aus SVW: {len(events)}")
+    print(f"Gefundene gültige Turniere: {len(events)}")
     return events
-            
+    
