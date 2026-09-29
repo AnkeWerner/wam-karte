@@ -14,37 +14,34 @@ def is_cell_ignored(text):
     return False
 
 def parse_end_date_iso(date_str):
-    """
-    Extrahiert verlässlich das Enddatum aus Formaten wie:
-    - '25.-26.7.26' -> 2026-07-26
-    - '11.07.2026'  -> 2026-07-11
-    - '07.12.25'    -> 2025-12-07
-    - '03.-04.08.2025' -> 2025-08-04
-    """
     try:
-        clean_str = re.sub(r"[^\d\.\-–—\/]", "", date_str)
-        parts = re.split(r"[\-–—\/]", clean_str)
-        last_part = parts[-1].strip()
-
-        month_year_match = re.search(r"\.(\d{1,2})\.(\d{2,4})$", clean_str)
-        if not month_year_match:
+        clean = re.sub(r"[^\d\.\-–—\/]", "", date_str).strip()
+        if not clean:
             return ""
 
-        month = int(month_year_match.group(1))
-        year = int(month_year_match.group(2))
+        parts = re.split(r"[\-–—\/]", clean)
+        last_part = parts[-1].strip()
 
+        match_my = re.search(r"\.(\d{1,2})\.(\d{2,4})$", last_part)
+        if not match_my:
+            match_my = re.search(r"\.(\d{1,2})\.(\d{2,4})$", clean)
+
+        if not match_my:
+            return ""
+
+        month = int(match_my.group(1))
+        year = int(match_my.group(2))
         if year < 100:
             year += 2000
 
         day_match = re.search(r"^(\d{1,2})", last_part)
         if not day_match:
             return ""
-        
         day = int(day_match.group(1))
 
         dt = datetime(year, month, day)
         return dt.strftime("%Y-%m-%d")
-    except Exception as e:
+    except Exception:
         return ""
 
 def fetch_events():
@@ -61,36 +58,32 @@ def fetch_events():
             cells = row.find_all(["td", "th"])
             if len(cells) < 3:
                 continue
-            
-            working_cells = cells[:-1]
-            row_text = " ".join([c.get_text(strip=True) for c in working_cells])
-            
-            if "ausgefallen" in row_text.lower():
-                continue
 
-            date_match = re.search(DATE_PATTERN, row_text)
+            date_cell_text = cells[1].get_text(strip=True)
+            date_match = re.search(DATE_PATTERN, date_cell_text)
             if not date_match:
                 continue
-                
+
             date_str = date_match.group(0).strip()
-            iso_end_date = parse_end_date_iso(date_str)
-            
-            if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
+            iso_end_date = parse_end_date_iso(date_cell_text)
+
+            row_full_text = " ".join([c.get_text(strip=True) for c in cells])
+            if "ausgefallen" in row_full_text.lower() or "stand vom" in row_full_text.lower():
                 continue
 
             turnier_infos = []
             links = []
-            turnier_cells = working_cells[1:]
-            
+            turnier_cells = cells[2:]
+
             for cell in turnier_cells:
                 cell_text = cell.get_text(separator=" ", strip=True)
-                
+
                 if not is_cell_ignored(cell_text):
                     clean_cell_text = re.sub(r"[\-–—].*online.*$", "", cell_text, flags=re.IGNORECASE).strip()
-                    
+
                     if clean_cell_text and not is_cell_ignored(clean_cell_text):
                         turnier_infos.append(clean_cell_text)
-                        
+
                         for a in cell.find_all("a", href=True):
                             href = a["href"]
                             full_link = urllib.parse.urljoin(BASE_URL, href)
@@ -100,7 +93,7 @@ def fetch_events():
             if not turnier_infos:
                 continue
 
-            clean_text = row_text.replace(date_str, "").strip()
+            clean_text = row_full_text.replace(date_str, "").strip()
             clean_text = re.sub(r"\b(Sa|So|Mo|Di|Mi|Do|Fr|Sa\/So|So\/Sa)\b", "", clean_text, flags=re.IGNORECASE)
             clean_text = re.sub(r"\d+\.", "", clean_text)
             clean_text = re.sub(r"[,\-\/:\+\(\)]", " ", clean_text)
@@ -116,15 +109,12 @@ def fetch_events():
             clean_location = raw_location
 
             for key, target_city in LOCATION_MAPPING.items():
-                if key in raw_location.lower() or key in row_text.lower():
+                if key in raw_location.lower() or key in row_full_text.lower():
                     clean_location = target_city
                     break
 
             unique_infos = list(dict.fromkeys(turnier_infos))
             turnier_typ = ", ".join(unique_infos)
-
-            # Debug-Ausgabe für das Terminal
-            print(f"[DEBUG] Datum: '{date_str}' -> Parsed ISO: '{iso_end_date}' | Ort: {clean_location}")
 
             events.append({
                 "date": date_str,
@@ -134,6 +124,6 @@ def fetch_events():
                 "links": links
             })
 
-    print(f"\n✔ Gefundene gültige Turniere: {len(events)}")
+    print(f"✔ Gefundene gültige Turniere aus SVW: {len(events)}")
     return events
             
