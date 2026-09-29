@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v36")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v37")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -56,6 +56,7 @@ def build_map(events):
                     icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
                 )
                 m.options['search_text'] = f"{event['location']} {event['date']} {event['type']}".lower()
+                m.options['iso_date'] = event['iso_date']
                 return m
 
             type_upper = event["type"].upper()
@@ -92,10 +93,9 @@ def build_map(events):
 
     folium.LayerControl(collapsed=False).add_to(wam_map)
 
-    # HTML Header Meta-Data und UI-Assets einbinden
     wam_map.get_root().header.add_child(folium.Element(generate_head_meta()))
     wam_map.get_root().html.add_child(folium.Element(generate_custom_ui(wam_map.get_name())))
 
     print(f"Erfolgreich auf der Karte gesetzte Marker: {markers_added}")
     return wam_map
-          
+            
