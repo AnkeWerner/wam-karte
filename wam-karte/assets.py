@@ -51,7 +51,6 @@ def generate_custom_ui(map_var_name):
     }}
     </style>
 
-    <!-- Eruda Mobile Console via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <script>
     if (typeof eruda !== 'undefined') {{
@@ -59,6 +58,19 @@ def generate_custom_ui(map_var_name):
     }}
 
     var allRegisteredMarkers = [];
+
+    // Hilfsfunktion: Konvertiert 'DD.MM.YYYY' in 'YYYY-MM-DD'
+    function parseGermanDateToIso(text) {{
+        if (!text) return "";
+        var match = text.match(/(\\d{{1,2}})\\.(\\d{{1,2}})\\.(\\d{{4}})/);
+        if (match) {{
+            var day = match[1].padStart(2, '0');
+            var month = match[2].padStart(2, '0');
+            var year = match[3];
+            return year + '-' + month + '-' + day;
+        }}
+        return "";
+    }}
 
     window.addEventListener('load', function() {{
         var layerControl = document.querySelector('.leaflet-control-layers');
@@ -100,7 +112,7 @@ def generate_custom_ui(map_var_name):
                     }});
                 }}
             }});
-            console.log("🔍 Registrierte Marker auf der Karte:", allRegisteredMarkers.length);
+            console.log("🔍 Registrierte Marker:", allRegisteredMarkers.length);
         }}
     }});
 
@@ -138,9 +150,11 @@ def generate_custom_ui(map_var_name):
             var marker = item.marker;
             var group = item.group;
             
-            // Optionen/Metadaten abrufen (Fallback auf Leaflet m.options)
-            var searchText = marker.options.search_text || (marker.getTooltip ? marker.getTooltip().getContent().toLowerCase() : "");
-            var isoDate = marker.options.iso_date || "";
+            var tooltipText = marker.getTooltip ? marker.getTooltip().getContent() : "";
+            var searchText = marker.options.search_text || tooltipText.toLowerCase();
+            
+            // ISO-Datum erst aus options, ansonsten per Regex direkt aus dem Tooltip lesen
+            var isoDate = marker.options.iso_date || parseGermanDateToIso(tooltipText);
 
             var textMatches = (query === "" || searchText.includes(query));
             
@@ -149,7 +163,7 @@ def generate_custom_ui(map_var_name):
                 if (isoDate && isoDate.length === 10) {{
                     dateMatches = (isoDate >= todayIso);
                 }} else {{
-                    dateMatches = true; // Falls kein ISO-Datum da ist, vorsichtshalber nicht ausblenden
+                    dateMatches = true; // Fallback: nicht ausblenden, falls unbelegbar
                 }}
             }}
 
@@ -158,13 +172,13 @@ def generate_custom_ui(map_var_name):
                     group.addLayer(marker);
                 }}
                 shownCount++;
-                console.log("✔ [SICHTBAR]", searchText, "| ISO-Datum:", isoDate, "| >= Heute?:", dateMatches);
+                console.log("✔ [SICHTBAR] ISO-Datum:", isoDate, "| >= Heute?:", dateMatches);
             }} else {{
                 if (group.hasLayer(marker)) {{
                     group.removeLayer(marker);
                 }}
                 hiddenCount++;
-                console.log("❌ [AUSGEBLENDET]", searchText, "| ISO-Datum:", isoDate, "| Datum-Match?:", dateMatches, "| Text-Match?:", textMatches);
+                console.log("❌ [AUSGEBLENDET] ISO-Datum:", isoDate, "| Datum-Match?:", dateMatches, "| Text-Match?:", textMatches);
             }}
         }});
 
