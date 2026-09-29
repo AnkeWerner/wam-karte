@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v38")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v39")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -54,16 +54,19 @@ def build_map(events):
             </div>
             """
 
+            search_text_val = f"{event['location']} {event['date']} {event['type']}".lower()
+            iso_date_val = str(event['iso_date'])
+
+            # Wichtig: iso_date und search_text direkt in den options-Dict der Marker übergeben
             def make_marker():
-                m = folium.Marker(
+                return folium.Marker(
                     location=[location_data.latitude, location_data.longitude],
                     popup=folium.Popup(popup_html, max_width=280),
                     tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                     icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
+                    search_text=search_text_val,
+                    iso_date=iso_date_val
                 )
-                m.options['search_text'] = f"{event['location']} {event['date']} {event['type']}".lower()
-                m.options['iso_date'] = event['iso_date']
-                return m
 
             type_upper = event["type"].upper()
             standard_matched = False
@@ -110,4 +113,4 @@ def build_map(events):
         print(f"Nicht auffindbare Orte ({len(failed_locations)}): {', '.join(failed_locations)}")
 
     return wam_map
-                               
+    
