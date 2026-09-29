@@ -15,40 +15,38 @@ def is_cell_ignored(text):
 
 def parse_end_date_iso(date_str):
     """
-    Extrahiert das hintere/letzte Datum aus Strings wie '11.-13.7.26' oder '03.-04.08.2025'
-    und gibt es als ISO-String 'YYYY-MM-DD' zurück.
+    Extrahiert verlässlich das Enddatum aus Formaten wie:
+    - '25.-26.7.26' -> 2026-07-26
+    - '11.07.2026'  -> 2026-07-11
+    - '07.12.25'    -> 2025-12-07
+    - '03.-04.08.2025' -> 2025-08-04
     """
     try:
-        # Falls ein Datumsbereich vorliegt, nehmen wir den Teil nach dem Bindestrich/Trennzeichen
-        parts = re.split(r"[\-–—\/]", date_str)
+        # Säubern von ungewollten Zeichen
+        clean_str = re.sub(r"[^\d\.\-–—\/]", "", date_str)
+        
+        # Falls es sich um eine Spanne handelt, nehmen wir den hinteren Teil nach dem Trennzeichen
+        parts = re.split(r"[\-–—\/]", clean_str)
         last_part = parts[-1].strip()
 
-        # Punkte ergänzen, falls Monat/Jahr vom vorderen Teil geerbt werden müssen
-        # Beispiel "11.-13.7.26" -> last_part ist "13.7.26"
-        match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{2,4})", date_str)
-        if not match:
+        # Monat und Jahr aus dem Gesamtstring extrahieren
+        # Sucht nach dem letzten vorkommenden Muster .Monat.Jahr (z. B. .7.26 oder .08.2025)
+        month_year_match = re.search(r"\.(\d{1,2})\.(\d{2,4})$", clean_str)
+        if not month_year_match:
             return ""
 
-        full_day_match = re.search(r"(\d{1,2})\.?$", last_part)
-        if full_day_match and "." not in last_part:
-            # Fall: '11.-13' mit festem Monat/Jahr am Ende
-            day = int(full_day_match.group(1))
-            month = int(match.group(2))
-            year = int(match.group(3))
-        else:
-            # Fall: Vollständiges Datum am Ende wie '13.7.26' oder '04.08.2025'
-            end_match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{2,4})", last_part)
-            if end_match:
-                day = int(end_match.group(1))
-                month = int(end_match.group(2))
-                year = int(end_match.group(3))
-            else:
-                day = int(match.group(1))
-                month = int(match.group(2))
-                year = int(match.group(3))
+        month = int(month_year_match.group(1))
+        year = int(month_year_match.group(2))
 
         if year < 100:
             year += 2000
+
+        # Tag aus dem letzten Teil gewinnen (z. B. '26' aus '26' oder '13' aus '13.7.26')
+        day_match = re.search(r"^(\d{1,2})", last_part)
+        if not day_match:
+            return ""
+        
+        day = int(day_match.group(1))
 
         dt = datetime(year, month, day)
         return dt.strftime("%Y-%m-%d")
