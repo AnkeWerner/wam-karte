@@ -93,9 +93,15 @@ def generate_custom_ui(map_var_name):
                 if (layer instanceof L.MarkerClusterGroup) {{
                     var group = layer;
                     group.eachLayer(function(marker) {{
+                        // Auslesen aus Tooltip und alt
+                        var textVal = marker.getTooltip ? marker.getTooltip().getContent().toLowerCase() : "";
+                        var isoVal = marker.options.alt || "";
+
                         allRegisteredMarkers.push({{
                             marker: marker,
-                            group: group
+                            group: group,
+                            searchText: textVal,
+                            isoDate: isoVal
                         }});
                     }});
                 }}
@@ -137,10 +143,8 @@ def generate_custom_ui(map_var_name):
         allRegisteredMarkers.forEach(function(item) {{
             var marker = item.marker;
             var group = item.group;
-            
-            // Optionen/Metadaten abrufen (Fallback auf Leaflet m.options)
-            var searchText = marker.options.search_text || (marker.getTooltip ? marker.getTooltip().getContent().toLowerCase() : "");
-            var isoDate = marker.options.iso_date || "";
+            var searchText = item.searchText;
+            var isoDate = item.isoDate;
 
             var textMatches = (query === "" || searchText.includes(query));
             
@@ -149,7 +153,7 @@ def generate_custom_ui(map_var_name):
                 if (isoDate && isoDate.length === 10) {{
                     dateMatches = (isoDate >= todayIso);
                 }} else {{
-                    dateMatches = true; // Falls kein ISO-Datum da ist, vorsichtshalber nicht ausblenden
+                    dateMatches = false; 
                 }}
             }}
 
