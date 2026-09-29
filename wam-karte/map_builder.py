@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v40")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v41")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -64,7 +64,7 @@ def build_map(events):
                     tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                     icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa")
                 )
-                # KORREKTUR: Optionen explizit auf der Python-Ebene im Dict ablegen
+                # KORREKTUR: Explizite Zuweisung in das Folium-Options-Dictionary
                 m.options['search_text'] = search_text_val
                 m.options['iso_date'] = iso_date_val
                 return m
