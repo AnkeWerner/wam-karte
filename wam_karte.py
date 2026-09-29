@@ -326,7 +326,7 @@ for table in tables:
         )
 
         clean_text = re.sub(
-            r"[,\-\/:\+]",
+            r"[,\-\/:\+\(\)]",
             " ",
             clean_text
         )
@@ -525,4 +525,312 @@ for event in events:
         </h4>
 
         <b>Datum:</b> {event['date']}<br>
-        <b>Ort:</b> {event['location']}
+        <b>Ort:</b> {event['location']}<br>
+
+        {links_html}
+    </div>
+    """
+
+    # ---------------------------------------------------------
+    # Marker-Funktion
+    # ---------------------------------------------------------
+
+    def make_marker(event=event,
+                    location_data=location_data,
+                    popup_html=popup_html):
+
+        marker = folium.Marker(
+            location=[
+                location_data.latitude,
+                location_data.longitude
+            ],
+            popup=folium.Popup(
+                popup_html,
+                max_width=280
+            ),
+            tooltip=(
+                f"{event['date']} - "
+                f"{event['location']} "
+                f"({event['type']})"
+            ),
+            icon=folium.Icon(
+                color="orange",
+                icon="chess-rook",
+                prefix="fa"
+            )
+        )
+
+        # Suchtext
+        marker.options["search_text"] = (
+            f"{event['location']} "
+            f"{event['date']} "
+            f"{event['type']}"
+        ).lower()
+
+        # ISO-Datum für den Datumsfilter
+        marker.options["event_date"] = (
+            event["date_iso"]
+        )
+
+        return marker
+
+    # ---------------------------------------------------------
+    # Kategorien bestimmen
+    # ---------------------------------------------------------
+
+    type_upper = event["type"].upper()
+
+    standard_matched = False
+
+    # WAM / BAM
+    if "WAM" in type_upper or "BAM" in type_upper:
+
+        make_marker().add_to(group_wam)
+
+        standard_matched = True
+
+    # Jugend
+    if any(
+        keyword in type_upper
+        for keyword in [
+            "WJPT",
+            "JGT",
+            "KJPT",
+            "BJPT",
+            "BJEM",
+            "KINDER",
+            "JUGENDLICHE",
+            "JUGEND"
+        ]
+    ):
+
+        make_marker().add_to(group_wjpt)
+
+        standard_matched = True
+
+    # Schulschach
+    if "SSGT" in type_upper:
+
+        make_marker().add_to(group_ssgt)
+
+        standard_matched = True
+
+    # Mädchen / Frauen
+    if any(
+        keyword in type_upper
+        for keyword in [
+            "MÄDCHEN",
+            "FRAUEN",
+            "MAEDCHEN",
+            "MÄDCHENTAG"
+        ]
+    ):
+
+        make_marker().add_to(group_frauen)
+
+        standard_matched = True
+
+    # ---------------------------------------------------------
+    # Andere Turnierformen
+    # ---------------------------------------------------------
+
+    andere_keywords = [
+        "SCHACH-WE",
+        "BEGINNER",
+        "CUP",
+        "OPEN",
+        "SONDER",
+        "OFFENE",
+        "SCHNELLSCHACH",
+        "MEISTERSCHAFT"
+    ]
+
+    is_andere_explicit = any(
+        keyword in type_upper
+        for keyword in andere_keywords
+    )
+
+    if is_andere_explicit or not standard_matched:
+
+        make_marker().add_to(group_andere)
+
+    markers_added += 1
+
+
+# =============================================================
+# 9. Layer Control
+# =============================================================
+
+folium.LayerControl(
+    collapsed=False
+).add_to(wam_map)
+
+map_var_name = wam_map.get_name()
+
+
+# =============================================================
+# 10. Favicon
+# =============================================================
+
+favicon_svg = urllib.parse.quote(
+    """<svg xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 100 100">
+
+    <rect width="100" height="100"
+          rx="20" fill="#1a5f7a"/>
+
+    <path d="
+        M 25 80 L 75 80
+        L 75 70 L 25 70 Z
+
+        M 30 70 L 35 45
+        L 65 45 L 70 70 Z
+
+        M 32 45 L 30 30
+        L 38 30 L 38 37
+        L 46 37 L 46 30
+        L 54 30 L 54 37
+        L 62 37 L 62 30
+        L 70 30 L 68 45 Z"
+        fill="#f2a900"/>
+    </svg>"""
+)
+
+favicon_data_url = (
+    f"data:image/svg+xml,{favicon_svg}"
+)
+
+
+# =============================================================
+# 11. Open-Graph-Vorschau
+# =============================================================
+
+preview_svg = urllib.parse.quote(
+    """<svg xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 1200 630"
+    width="1200"
+    height="630">
+
+    <rect width="1200"
+          height="630"
+          fill="#1a5f7a"/>
+
+    <g opacity="0.08"
+       fill="#ffffff">
+
+        <rect x="0" y="0"
+              width="150" height="150"/>
+
+        <rect x="300" y="0"
+              width="150" height="150"/>
+
+        <rect x="600" y="0"
+              width="150" height="150"/>
+
+        <rect x="900" y="0"
+              width="150" height="150"/>
+
+        <rect x="150" y="150"
+              width="150" height="150"/>
+
+        <rect x="450" y="150"
+              width="150" height="150"/>
+
+        <rect x="750" y="150"
+              width="150" height="150"/>
+
+        <rect x="1050" y="150"
+              width="150" height="150"/>
+
+        <rect x="0" y="300"
+              width="150" height="150"/>
+
+        <rect x="300" y="300"
+              width="150" height="150"/>
+
+        <rect x="600" y="300"
+              width="150" height="150"/>
+
+        <rect x="900" y="300"
+              width="150" height="150"/>
+
+        <rect x="150" y="450"
+              width="150" height="150"/>
+
+        <rect x="450" y="450"
+              width="150" height="150"/>
+
+        <rect x="750" y="450"
+              width="150" height="150"/>
+
+        <rect x="1050" y="450"
+              width="150" height="150"/>
+    </g>
+
+    <!-- Schachturm -->
+    <g transform="translate(100, 165) scale(3.5)">
+
+        <path d="
+            M 25 80 L 75 80
+            L 75 70 L 25 70 Z
+
+            M 30 70 L 35 45
+            L 65 45 L 70 70 Z
+
+            M 32 45 L 30 30
+            L 38 30 L 38 37
+            L 46 37 L 46 30
+            L 54 30 L 54 37
+            L 62 37 L 62 30
+            L 70 30 L 68 45 Z"
+            fill="#f2a900"/>
+    </g>
+
+    <text x="450" y="260"
+          font-family="Arial, sans-serif"
+          font-weight="bold"
+          font-size="64"
+          fill="#ffffff">
+        Schachturniere
+    </text>
+
+    <text x="450" y="340"
+          font-family="Arial, sans-serif"
+          font-weight="bold"
+          font-size="52"
+          fill="#f2a900">
+        Baden-Württemberg
+    </text>
+
+    <text x="450" y="420"
+          font-family="Arial, sans-serif"
+          font-size="32"
+          fill="#e0e0e0">
+        Interaktive Karte &amp; Termine
+        (WAM, WJPT etc.)
+    </text>
+
+    </svg>"""
+)
+
+preview_data_url = (
+    f"data:image/svg+xml,{preview_svg}"
+)
+
+
+# =============================================================
+# 12. Meta-Tags & Favicon
+# =============================================================
+
+head_meta_html = f"""
+<!-- Website Titel -->
+<title>Schachturnier-Karte Baden-Württemberg</title>
+
+<!-- Favicon -->
+<link rel="icon"
+      type="image/svg+xml"
+      href="{favicon_data_url}">
+
+<!-- Open Graph -->
+<meta property="og:title"
+      content=
