@@ -29,7 +29,7 @@ jobs:
           pip install requests beautifulsoup4 geopy folium
 
       - name: Skript ausführen & index.html erzeugen
-        run: python wam_karte/main.py
+        run: python wam-karte/main.py
 
       - name: GitHub Pages einrichten
         uses: actions/configure-pages@v5
