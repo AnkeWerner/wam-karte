@@ -20,7 +20,7 @@ def get_favicon_and_preview_urls():
       </g>
       <text x="450" y="260" font-family="Arial, sans-serif" font-weight="bold" font-size="64" fill="#ffffff">Schachturniere</text>
       <text x="450" y="340" font-family="Arial, sans-serif" font-weight="bold" font-size="52" fill="#f2a900">Baden-Württemberg</text>
-      <text x="450" y="320" font-family="Arial, sans-serif" font-size="32" fill="#e0e0e0">Interaktive Karte &amp; Termine (WAM, WJPT etc.)</text>
+      <text x="450" y="420" font-family="Arial, sans-serif" font-size="32" fill="#e0e0e0">Interaktive Karte &amp; Termine (WAM, WJPT etc.)</text>
     </svg>""")
     
     return f"data:image/svg+xml,{favicon_svg}", f"data:image/svg+xml,{preview_svg}"
@@ -51,10 +51,9 @@ def generate_custom_ui(map_var_name):
     }}
     </style>
 
-    <!-- Eruda Mobile Console via CDN einbinden -->
+    <!-- Eruda Mobile Console via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <script>
-    // Konsole direkt auf dem Smartphone-Bildschirm aktivieren
     if (typeof eruda !== 'undefined') {{
         eruda.init();
     }}
@@ -101,7 +100,7 @@ def generate_custom_ui(map_var_name):
                     }});
                 }}
             }});
-            console.log("🔍 [HANDY DEBUG] Registrierte Marker:", allRegisteredMarkers.length);
+            console.log("🔍 Registrierte Marker auf der Karte:", allRegisteredMarkers.length);
         }}
     }});
 
@@ -122,7 +121,6 @@ def generate_custom_ui(map_var_name):
         var query = inputEl.value.toLowerCase().trim();
         var futureOnly = futureFilterEl ? futureFilterEl.checked : false;
 
-        // Lokales Datum als ISO YYYY-MM-DD
         var today = new Date();
         var yyyy = today.getFullYear();
         var mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -130,8 +128,8 @@ def generate_custom_ui(map_var_name):
         var todayIso = yyyy + '-' + mm + '-' + dd;
 
         console.log("====================================");
-        console.log("📅 [FILTER REFRESH] Heute (ISO):", todayIso);
-        console.log("📅 [FILTER REFRESH] Zukunftsfilter aktiv?:", futureOnly);
+        console.log("📅 [FILTER RUN] Heutiges Datum (ISO):", todayIso);
+        console.log("📅 [FILTER RUN] Zukunftsfilter aktiv?:", futureOnly);
 
         var shownCount = 0;
         var hiddenCount = 0;
@@ -140,7 +138,8 @@ def generate_custom_ui(map_var_name):
             var marker = item.marker;
             var group = item.group;
             
-            var searchText = marker.options.search_text || "";
+            // Optionen/Metadaten abrufen (Fallback auf Leaflet m.options)
+            var searchText = marker.options.search_text || (marker.getTooltip ? marker.getTooltip().getContent().toLowerCase() : "");
             var isoDate = marker.options.iso_date || "";
 
             var textMatches = (query === "" || searchText.includes(query));
@@ -150,8 +149,7 @@ def generate_custom_ui(map_var_name):
                 if (isoDate && isoDate.length === 10) {{
                     dateMatches = (isoDate >= todayIso);
                 }} else {{
-                    console.warn("⚠️ Kein gültiges iso_date:", searchText, "| Wert:", isoDate);
-                    dateMatches = true; 
+                    dateMatches = true; // Falls kein ISO-Datum da ist, vorsichtshalber nicht ausblenden
                 }}
             }}
 
@@ -160,16 +158,17 @@ def generate_custom_ui(map_var_name):
                     group.addLayer(marker);
                 }}
                 shownCount++;
+                console.log("✔ [SICHTBAR]", searchText, "| ISO-Datum:", isoDate, "| >= Heute?:", dateMatches);
             }} else {{
                 if (group.hasLayer(marker)) {{
                     group.removeLayer(marker);
                 }}
                 hiddenCount++;
-                console.log("❌ VERSTECKT:", searchText, "| ISO:", isoDate, "| Ist Zukünftig?:", dateMatches);
+                console.log("❌ [AUSGEBLENDET]", searchText, "| ISO-Datum:", isoDate, "| Datum-Match?:", dateMatches, "| Text-Match?:", textMatches);
             }}
         }});
 
-        console.log("📊 RESULTAT: Sichtbar:", shownCount, "| Versteckt:", hiddenCount);
+        console.log("📊 RESULTAT -> Sichtbar:", shownCount, "| Ausgeblendet:", hiddenCount);
     }}
     </script>
     """
