@@ -3,9 +3,9 @@ import urllib3
 # SSL-Warnungen unterdrücken
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-URL = "https://www.svw.info/wts/terminuebersichten/18322-terminuebersicht-wjpt-und-wam-2025-26"
-# BASE_URL = "https://www.svw.info"
-# BASE_URL = "https://www.svw.info/wts/terminuebersichten"
+# URL = "https://www.svw.info/wts/terminuebersichten/18322-terminuebersicht-wjpt-und-wam-2025-26"
+URL = "https://www.svw.info/wts/terminuebersichten"
+BASE_URL = "https://www.svw.info"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 DATE_PATTERN = r"\d{1,2}\s*[\.\/]?\s*[\-–—\/]\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b"
