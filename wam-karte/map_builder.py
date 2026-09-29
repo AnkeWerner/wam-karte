@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v37")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v38")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -24,14 +24,20 @@ def build_map(events):
     group_andere = MarkerCluster(name="Andere Turnierformen", spiderfyOnMaxZoom=True).add_to(wam_map)
 
     markers_added = 0
+    failed_locations = []
+
+    print("\n--- Geocoding Status ---")
     for event in events:
-        search_query = f"{event['location']}, Baden-Württemberg, Germany"
+        location_name = event['location']
+        search_query = f"{location_name}, Baden-Württemberg, Germany"
         location_data = geocode(search_query)
 
         if not location_data:
-            location_data = geocode(f"{event['location']}, Germany")
+            location_data = geocode(f"{location_name}, Germany")
 
         if location_data:
+            print(f"✔ Ort gefunden: '{location_name}' ({location_data.latitude:.4f}, {location_data.longitude:.4f}) | Datum: {event['date']} ({event['iso_date']})")
+            
             links_html = ""
             if event["links"]:
                 links_html = "<div style='margin-top: 8px; border-top: 1px solid #ccc; padding-top: 5px;'>"
@@ -90,12 +96,18 @@ def build_map(events):
                 m.add_to(group_andere)
 
             markers_added += 1
+        else:
+            print(f"❌ Ort NICHT gefunden: '{location_name}' | Datum: {event['date']}")
+            failed_locations.append(location_name)
 
     folium.LayerControl(collapsed=False).add_to(wam_map)
 
     wam_map.get_root().header.add_child(folium.Element(generate_head_meta()))
     wam_map.get_root().html.add_child(folium.Element(generate_custom_ui(wam_map.get_name())))
 
-    print(f"Erfolgreich auf der Karte gesetzte Marker: {markers_added}")
+    print(f"\nSummary: {markers_added} Marker erfolgreich auf der Karte gesetzt.")
+    if failed_locations:
+        print(f"Nicht auffindbare Orte ({len(failed_locations)}): {', '.join(failed_locations)}")
+
     return wam_map
-            
+                               
