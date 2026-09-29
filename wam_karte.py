@@ -833,4 +833,476 @@ head_meta_html = f"""
 
 <!-- Open Graph -->
 <meta property="og:title"
-      content=
+      content="Schachturnier-Karte Baden-Württemberg">
+
+<meta property="og:description"
+      content="Interaktive Übersicht aller Schachturniere
+      (WAM, WJPT, Jugend- &amp; Amateurturniere)
+      in Baden-Württemberg.">
+
+<meta property="og:image"
+      content="{preview_data_url}">
+
+<meta property="og:type"
+      content="website">
+"""
+
+wam_map.get_root().header.add_child(
+    folium.Element(head_meta_html)
+)
+
+
+# =============================================================
+# 13. Benutzeroberfläche & JavaScript
+# =============================================================
+
+custom_ui_html = f"""
+<style>
+
+.leaflet-top.leaflet-right
+.leaflet-control-layers {{
+    margin-top: 10px !important;
+    margin-right: 10px !important;
+    padding: 12px !important;
+    border-radius: 8px !important;
+
+    box-shadow:
+        0 4px 12px rgba(0,0,0,0.2)
+        !important;
+
+    font-family: Arial, sans-serif
+        !important;
+
+    min-width: 240px;
+    max-width: 280px;
+}}
+
+</style>
+
+
+<script>
+
+var allRegisteredMarkers = [];
+
+
+/* =========================================================
+   Karte vollständig geladen
+   ========================================================= */
+
+window.addEventListener('load', function() {{
+
+    var layerControl =
+        document.querySelector(
+            '.leaflet-control-layers'
+        );
+
+    if (layerControl) {{
+
+        var customBox =
+            document.createElement('div');
+
+        customBox.style.cssText =
+            'margin-bottom: 12px;' +
+            'border-bottom: 1px solid #ddd;' +
+            'padding-bottom: 10px;';
+
+
+        customBox.innerHTML = `
+
+            <!-- Suche -->
+            <div style="margin-bottom: 8px;">
+
+                <input
+                    type="text"
+                    id="mapSearchInput"
+                    placeholder="🔎 Ort, Datum, WAM..."
+                    oninput="filterMapMarkers()"
+                    onkeyup="filterMapMarkers()"
+
+                    style="
+                        width: 100%;
+                        padding: 7px 9px;
+                        border: 1px solid #ccc;
+                        border-radius: 5px;
+                        font-size: 13px;
+                        box-sizing: border-box;
+                        outline: none;
+                    "
+                >
+
+            </div>
+
+
+            <!-- Datumsfilter -->
+            <div style="
+                margin-bottom: 10px;
+                font-size: 12px;
+            ">
+
+                <label style="
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                    cursor: pointer;
+                ">
+
+                    <input
+                        type="checkbox"
+                        id="futureOnlyFilter"
+                        onchange="filterMapMarkers()"
+                    >
+
+                    <span>
+                        Nur heutige und zukünftige Termine
+                    </span>
+
+                </label>
+
+            </div>
+
+
+            <!-- Alle auswählen / abwählen -->
+            <div style="
+                display: flex;
+                gap: 6px;
+                margin-bottom: 8px;
+            ">
+
+                <button
+                    onclick="setAllFilters(true)"
+
+                    style="
+                        flex: 1;
+                        padding: 6px 4px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        cursor: pointer;
+                        background-color: #007bff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                    "
+                >
+                    Alle auswählen
+                </button>
+
+
+                <button
+                    onclick="setAllFilters(false)"
+
+                    style="
+                        flex: 1;
+                        padding: 6px 4px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        cursor: pointer;
+                        background-color: #6c757d;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                    "
+                >
+                    Alle abwählen
+                </button>
+
+            </div>
+
+
+            <!-- Datenquelle -->
+            <div style="
+                font-size: 10px;
+                color: #666;
+                line-height: 1.2;
+            ">
+
+                Datenquelle:
+
+                <a
+                    href="{URL}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+
+                    style="
+                        color: #0066cc;
+                        text-decoration: underline;
+                    "
+                >
+                    SVW Terminübersicht
+                </a>
+
+            </div>
+
+        `;
+
+
+        layerControl.insertBefore(
+            customBox,
+            layerControl.firstChild
+        );
+    }}
+
+
+    /* =====================================================
+       Alle Marker registrieren
+       ===================================================== */
+
+    if (typeof {map_var_name} !== 'undefined') {{
+
+        {map_var_name}.eachLayer(
+            function(layer) {{
+
+                if (
+                    layer instanceof
+                    L.MarkerClusterGroup
+                ) {{
+
+                    var group = layer;
+
+                    group.eachLayer(
+                        function(marker) {{
+
+                            allRegisteredMarkers.push({{
+                                marker: marker,
+                                group: group
+                            }});
+
+                        }}
+                    );
+
+                }
+
+            }}
+        );
+
+    }}
+
+}});
+
+
+/* =========================================================
+   Alle Kategorien auswählen / abwählen
+   ========================================================= */
+
+function setAllFilters(selectState) {{
+
+    var checkboxes =
+        document.querySelectorAll(
+            '.leaflet-control-layers-overlays ' +
+            'input[type="checkbox"]'
+        );
+
+    checkboxes.forEach(
+        function(checkbox) {{
+
+            if (
+                checkbox.checked !== selectState
+            ) {{
+
+                checkbox.click();
+
+            }
+
+        }
+    );
+
+}}
+
+
+/* =========================================================
+   Marker filtern
+   ========================================================= */
+
+function filterMapMarkers() {{
+
+    var inputEl =
+        document.getElementById(
+            'mapSearchInput'
+        );
+
+    var futureOnlyEl =
+        document.getElementById(
+            'futureOnlyFilter'
+        );
+
+
+    if (!inputEl) {{
+        return;
+    }}
+
+
+    var query =
+        inputEl.value
+            .toLowerCase()
+            .trim();
+
+
+    /*
+     * Der Datumsfilter ist beim Laden
+     * ausdrücklich deaktiviert.
+     */
+    var futureOnly =
+        futureOnlyEl
+            ? futureOnlyEl.checked
+            : false;
+
+
+    /*
+     * Heute um 00:00 Uhr.
+     *
+     * Dadurch wird ein heutiger Termin
+     * nicht versehentlich ausgeblendet,
+     * nur weil die aktuelle Uhrzeit
+     * bereits später ist.
+     */
+    var today = new Date();
+
+    today.setHours(
+        0, 0, 0, 0
+    );
+
+
+    allRegisteredMarkers.forEach(
+        function(item) {{
+
+            var marker = item.marker;
+            var group = item.group;
+
+
+            /* ---------------------------------------------
+               Suchtext
+               --------------------------------------------- */
+
+            var searchText =
+                marker.options.search_text
+                || "";
+
+
+            if (
+                !searchText &&
+                marker.getTooltip
+            ) {{
+
+                var tooltipContent =
+                    marker.getTooltip()
+                        .getContent();
+
+                if (tooltipContent) {{
+
+                    searchText =
+                        tooltipContent
+                            .toLowerCase();
+
+                }}
+
+            }}
+
+
+            var matchesSearch =
+                query === ""
+                ||
+                searchText.includes(query);
+
+
+            /* ---------------------------------------------
+               Datumsfilter
+               --------------------------------------------- */
+
+            var matchesDate = true;
+
+
+            if (futureOnly) {{
+
+                var markerDate =
+                    marker.options.event_date;
+
+
+                /*
+                 * Falls kein Datum vorhanden ist,
+                 * wird der Marker nicht automatisch
+                 * ausgeblendet.
+                 */
+                if (markerDate) {{
+
+                    var eventDate =
+                        new Date(
+                            markerDate + "T00:00:00"
+                        );
+
+
+                    eventDate.setHours(
+                        0, 0, 0, 0
+                    );
+
+
+                    matchesDate =
+                        eventDate >= today;
+
+                }}
+
+            }}
+
+
+            /* ---------------------------------------------
+               Beide Filter müssen passen
+               --------------------------------------------- */
+
+            var matches =
+                matchesSearch &&
+                matchesDate;
+
+
+            if (matches) {{
+
+                if (
+                    !group.hasLayer(marker)
+                ) {{
+
+                    group.addLayer(marker);
+
+                }}
+
+            }} else {{
+
+                if (
+                    group.hasLayer(marker)
+                ) {{
+
+                    group.removeLayer(marker);
+
+                }}
+
+            }}
+
+        }
+    );
+
+}}
+
+</script>
+"""
+
+
+wam_map.get_root().html.add_child(
+    folium.Element(custom_ui_html)
+)
+
+
+# =============================================================
+# 14. Ergebnis
+# =============================================================
+
+print(
+    f"\nErfolgreich auf der Karte gesetzte Marker: "
+    f"{markers_added}"
+)
+
+
+# =============================================================
+# 15. HTML speichern
+# =============================================================
+
+wam_map.save("index.html")
+
+print(
+    "index.html erfolgreich erzeugt!"
+)
