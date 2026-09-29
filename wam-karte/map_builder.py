@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v41")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v42")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -64,7 +64,6 @@ def build_map(events):
                     tooltip=f"{event['date']} - {event['location']} ({event['type']})",
                     icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa")
                 )
-                # KORREKTUR: Explizite Zuweisung in das Folium-Options-Dictionary
                 m.options['search_text'] = search_text_val
                 m.options['iso_date'] = iso_date_val
                 return m
@@ -92,9 +91,11 @@ def build_map(events):
                 m.add_to(group_frauen)
                 standard_matched = True
 
-            andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
+            # 'KEIZER' explizit zu den anderen Turnierformen aufnehmen!
+            andere_keywords = ["KEIZER", "SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
             is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
+            # Wenn 'KEIZER' oder ein anderes spezifisches Keyword enthalten ist ODER es zu sonst keiner Hauptkategorie gepasst hat
             if is_andere_explicit or not standard_matched:
                 m = make_marker()
                 m.add_to(group_andere)
