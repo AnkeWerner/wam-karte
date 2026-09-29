@@ -5,7 +5,7 @@ from geopy.extra.rate_limiter import RateLimiter
 from assets import generate_head_meta, generate_custom_ui
 
 def build_map(events):
-    geolocator = Nominatim(user_agent="wam_schach_karte_app_v39")
+    geolocator = Nominatim(user_agent="wam_schach_karte_app_v40")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
     wam_map = folium.Map(location=[48.7758, 9.1829], zoom_start=8)
@@ -36,7 +36,7 @@ def build_map(events):
             location_data = geocode(f"{location_name}, Germany")
 
         if location_data:
-            print(f"✔ Ort gefunden: '{location_name}' ({location_data.latitude:.4f}, {location_data.longitude:.4f}) | Datum: {event['date']} ({event['iso_date']})")
+            print(f"✔ Ort gefunden: '{location_name}' ({location_data.latitude:.4f}, {location_data.longitude:.4f}) | Datum: {event['date']} (ISO: {event['iso_date']})")
             
             links_html = ""
             if event["links"]:
@@ -54,49 +54,52 @@ def build_map(events):
             </div>
             """
 
-            search_text_val = f"{event['location']} {event['date']} {event['type']}".lower()
-            iso_date_val = str(event['iso_date'])
+            # Reine Text-Strings für den Filter aufbereiten (ohne HTML)
+            raw_search_text = f"{event['date']} - {event['location']} ({event['type']})".lower()
+            iso_date_clean = str(event['iso_date']).strip()
 
-            # Wichtig: iso_date und search_text direkt in den options-Dict der Marker übergeben
-            def make_marker():
-                return folium.Marker(
-                    location=[location_data.latitude, location_data.longitude],
-                    popup=folium.Popup(popup_html, max_width=280),
-                    tooltip=f"{event['date']} - {event['location']} ({event['type']})",
-                    icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa"),
-                    search_text=search_text_val,
-                    iso_date=iso_date_val
-                )
+            marker = folium.Marker(
+                location=[location_data.latitude, location_data.longitude],
+                popup=folium.Popup(popup_html, max_width=280),
+                tooltip=f"{event['date']} - {event['location']} ({event['type']})",
+                icon=folium.Icon(color="orange", icon="chess-rook", prefix="fa")
+            )
+
+            # WICHTIG: Eigenschaften direkt in das JS-Objekt schreiben
+            marker.add_child(folium.Element(f"""
+                <script>
+                    window.addEventListener('load', function() {{
+                        var m = {marker.get_name()};
+                        m.options.search_text = "{raw_search_text}";
+                        m.options.iso_date = "{iso_date_clean}";
+                    }});
+                </script>
+            """))
 
             type_upper = event["type"].upper()
             standard_matched = False
 
             if "WAM" in type_upper or "BAM" in type_upper:
-                m = make_marker()
-                m.add_to(group_wam)
+                marker.add_to(group_wam)
                 standard_matched = True
 
             if any(kw in type_upper for kw in ["WJPT", "JGT", "KJPT", "BJPT", "BJEM", "KINDER", "JUGENDLICHE", "JUGEND"]):
-                m = make_marker()
-                m.add_to(group_wjpt)
+                marker.add_to(group_wjpt)
                 standard_matched = True
 
             if "SSGT" in type_upper:
-                m = make_marker()
-                m.add_to(group_ssgt)
+                marker.add_to(group_ssgt)
                 standard_matched = True
 
             if any(kw in type_upper for kw in ["MÄDCHEN", "FRAUEN", "MAEDCHEN", "MÄDCHENTAG"]):
-                m = make_marker()
-                m.add_to(group_frauen)
+                marker.add_to(group_frauen)
                 standard_matched = True
 
             andere_keywords = ["SCHACH-WE", "BEGINNER", "CUP", "OPEN", "SONDER", "OFFENE", "SCHNELLSCHACH", "MEISTERSCHAFT"]
             is_andere_explicit = any(kw in type_upper for kw in andere_keywords)
 
             if is_andere_explicit or not standard_matched:
-                m = make_marker()
-                m.add_to(group_andere)
+                marker.add_to(group_andere)
 
             markers_added += 1
         else:
@@ -109,8 +112,5 @@ def build_map(events):
     wam_map.get_root().html.add_child(folium.Element(generate_custom_ui(wam_map.get_name())))
 
     print(f"\nSummary: {markers_added} Marker erfolgreich auf der Karte gesetzt.")
-    if failed_locations:
-        print(f"Nicht auffindbare Orte ({len(failed_locations)}): {', '.join(failed_locations)}")
-
     return wam_map
-    
+            
