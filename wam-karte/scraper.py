@@ -22,15 +22,10 @@ def parse_end_date_iso(date_str):
     - '03.-04.08.2025' -> 2025-08-04
     """
     try:
-        # Säubern von ungewollten Zeichen
         clean_str = re.sub(r"[^\d\.\-–—\/]", "", date_str)
-        
-        # Falls es sich um eine Spanne handelt, nehmen wir den hinteren Teil nach dem Trennzeichen
         parts = re.split(r"[\-–—\/]", clean_str)
         last_part = parts[-1].strip()
 
-        # Monat und Jahr aus dem Gesamtstring extrahieren
-        # Sucht nach dem letzten vorkommenden Muster .Monat.Jahr (z. B. .7.26 oder .08.2025)
         month_year_match = re.search(r"\.(\d{1,2})\.(\d{2,4})$", clean_str)
         if not month_year_match:
             return ""
@@ -41,7 +36,6 @@ def parse_end_date_iso(date_str):
         if year < 100:
             year += 2000
 
-        # Tag aus dem letzten Teil gewinnen (z. B. '26' aus '26' oder '13' aus '13.7.26')
         day_match = re.search(r"^(\d{1,2})", last_part)
         if not day_match:
             return ""
@@ -50,7 +44,7 @@ def parse_end_date_iso(date_str):
 
         dt = datetime(year, month, day)
         return dt.strftime("%Y-%m-%d")
-    except Exception:
+    except Exception as e:
         return ""
 
 def fetch_events():
@@ -129,6 +123,9 @@ def fetch_events():
             unique_infos = list(dict.fromkeys(turnier_infos))
             turnier_typ = ", ".join(unique_infos)
 
+            # Debug-Ausgabe für das Terminal
+            print(f"[DEBUG] Datum: '{date_str}' -> Parsed ISO: '{iso_end_date}' | Ort: {clean_location}")
+
             events.append({
                 "date": date_str,
                 "iso_date": iso_end_date,
@@ -137,6 +134,6 @@ def fetch_events():
                 "links": links
             })
 
-    print(f"Gefundene gültige Turniere: {len(events)}")
+    print(f"\n✔ Gefundene gültige Turniere: {len(events)}")
     return events
-    
+            
