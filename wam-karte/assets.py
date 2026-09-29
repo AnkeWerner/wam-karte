@@ -65,6 +65,12 @@ def generate_custom_ui(map_var_name):
                     <input type="text" id="mapSearchInput" placeholder="🔎 Ort, Datum, WAM..." oninput="filterMapMarkers()" onkeyup="filterMapMarkers()" 
                            style="width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 5px; font-size: 13px; box-sizing: border-box; outline: none;">
                 </div>
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="futureOnlyFilter" onchange="filterMapMarkers()" style="cursor: pointer;">
+                    <label for="futureOnlyFilter" style="font-size: 12px; font-weight: bold; color: #333; cursor: pointer; user-select: none;">
+                        📅 Nur künftige Termine (ab heute)
+                    </label>
+                </div>
                 <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                     <button onclick="setAllFilters(true)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">Alle auswählen</button>
                     <button onclick="setAllFilters(false)" style="flex: 1; padding: 6px 4px; font-size: 11px; font-weight: bold; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 4px;">Alle abwählen</button>
@@ -102,22 +108,39 @@ def generate_custom_ui(map_var_name):
 
     function filterMapMarkers() {{
         var inputEl = document.getElementById('mapSearchInput');
+        var futureFilterEl = document.getElementById('futureOnlyFilter');
         if (!inputEl) return;
         
         var query = inputEl.value.toLowerCase().trim();
+        var futureOnly = futureFilterEl ? futureFilterEl.checked : false;
+
+        // Heutiges Datum im ISO Format (YYYY-MM-DD)
+        var todayIso = new Date().toISOString().split('T')[0];
 
         allRegisteredMarkers.forEach(function(item) {{
             var marker = item.marker;
             var group = item.group;
             
             var searchText = marker.options.search_text || "";
+            var isoDate = marker.options.iso_date || "";
+
             if (!searchText && marker.getTooltip) {{
                 searchText = marker.getTooltip().getContent().toLowerCase();
             }}
 
-            var matches = (query === "" || searchText.includes(query));
+            var textMatches = (query === "" || searchText.includes(query));
+            
+            // Datumsprüfung: Falls Filter aktiv ist, muss das Enddatum >= heute sein
+            var dateMatches = true;
+            if (futureOnly) {{
+                if (isoDate) {{
+                    dateMatches = (isoDate >= todayIso);
+                }} else {{
+                    dateMatches = false; // Ohne parsebares Datum im Zukunftsmodus ausblenden
+                }}
+            }}
 
-            if (matches) {{
+            if (textMatches && dateMatches) {{
                 if (!group.hasLayer(marker)) {{
                     group.addLayer(marker);
                 }}
@@ -130,4 +153,4 @@ def generate_custom_ui(map_var_name):
     }}
     </script>
     """
-  
+    
