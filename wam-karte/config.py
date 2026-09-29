@@ -16,10 +16,12 @@ NOISE_WORDS = [
     "sc", "sf", "sv", "vfl", "cup", "biber", "stand", "vom", "der", "u.", "und", "mit", "oder", "für",
     "in", "a.d.f.", "a.n.", "a.d.m.", "online", "dwz", "siehe", "oben", "parallel", "zur",
     "schnellschach", "frühlingsturnier", "familien", "meisterschaft", "off", "offene",
-    "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer"
+    "kinder", "jugendliche", "jünger", "altersklassen", "spielberechtigt", "stichtag", "joker", "neuen", "bei", "es", "sind", "römer",
+    "regiocup", "regio"  # <-- NEU HINZUGEFÜGT
 ]
 
 LOCATION_MAPPING = {
+    "altbach": "Altbach",  # <-- NEU HINZUGEFÜGT
     "rommelshausen": "Kernen im Remstal",
     "jedesheim": "Jedesheim Illertissen",
     "renningen": "Renningen",
