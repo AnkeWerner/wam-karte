@@ -1,5 +1,6 @@
 import re
 import urllib.parse
+from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from config import URL, BASE_URL, HEADERS, DATE_PATTERN, NOISE_WORDS, LOCATION_MAPPING
@@ -11,6 +12,48 @@ def is_cell_ignored(text):
     if clean.endswith("online") or "online dwz" in clean or "dwz siehe oben" in clean:
         return True
     return False
+
+def parse_end_date_iso(date_str):
+    """
+    Extrahiert das hintere/letzte Datum aus Strings wie '11.-13.7.26' oder '03.-04.08.2025'
+    und gibt es als ISO-String 'YYYY-MM-DD' zurück.
+    """
+    try:
+        # Falls ein Datumsbereich vorliegt, nehmen wir den Teil nach dem Bindestrich/Trennzeichen
+        parts = re.split(r"[\-–—\/]", date_str)
+        last_part = parts[-1].strip()
+
+        # Punkte ergänzen, falls Monat/Jahr vom vorderen Teil geerbt werden müssen
+        # Beispiel "11.-13.7.26" -> last_part ist "13.7.26"
+        match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{2,4})", date_str)
+        if not match:
+            return ""
+
+        full_day_match = re.search(r"(\d{1,2})\.?$", last_part)
+        if full_day_match and "." not in last_part:
+            # Fall: '11.-13' mit festem Monat/Jahr am Ende
+            day = int(full_day_match.group(1))
+            month = int(match.group(2))
+            year = int(match.group(3))
+        else:
+            # Fall: Vollständiges Datum am Ende wie '13.7.26' oder '04.08.2025'
+            end_match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{2,4})", last_part)
+            if end_match:
+                day = int(end_match.group(1))
+                month = int(end_match.group(2))
+                year = int(end_match.group(3))
+            else:
+                day = int(match.group(1))
+                month = int(match.group(2))
+                year = int(match.group(3))
+
+        if year < 100:
+            year += 2000
+
+        dt = datetime(year, month, day)
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
 def fetch_events():
     response = requests.get(URL, headers=HEADERS, verify=False)
@@ -38,6 +81,7 @@ def fetch_events():
                 continue
                 
             date_str = date_match.group(0).strip()
+            iso_end_date = parse_end_date_iso(date_str)
             
             if "stand vom" in row_text.lower() or "spielberechtigt" in row_text.lower():
                 continue
@@ -89,6 +133,7 @@ def fetch_events():
 
             events.append({
                 "date": date_str,
+                "iso_date": iso_end_date,
                 "location": clean_location,
                 "type": turnier_typ,
                 "links": links
@@ -96,4 +141,4 @@ def fetch_events():
 
     print(f"Gefundene gültige Turniere: {len(events)}")
     return events
-      
+    
